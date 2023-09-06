@@ -6,14 +6,14 @@ GETL		EQU $0003	; Inputs one line of text from the keyboard.
 CRLF2		EQU	$0006	; Places cursor at start of new line
 CRLF		EQU	$0009	; Places cursor at start of new line if it wasn't already at the start
 PRNTSPACE	EQU	$000C	; Print a space character
-PRNT		EQU $0012	; Print a character (or control)
+PRNT		EQU	$0012	; Print a character (or control)
 MESSAGE		EQU	$0015	; Print a string
 GETKY		EQU	$001B	; Get the current key pressed
 PRTWRD		EQU	$03BA	; Output a 16-bit hexadecimal number contained in HL to the screen
 PRTBYT		EQU	$03C3	; Output a hexadecimal number contained in A to the screen
 DIGASC		EQU	$03DA	
 DISPAC		EQU	$0BCE	; Convert a display code stored in A into its ASCII code
-ASCWRD		EQU $0410	; Convert AF,HL ASCII into hex and store in HL
+ASCWRD		EQU	$0410	; Convert AF,HL ASCII into hex and store in HL
 CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=row, L=col)
 
 ;
@@ -55,20 +55,20 @@ ENDM
 SLEEPX		MACRO				; Sleep for 0x???? * 0x?? iterations
 	PUSH	DE
 	PUSH	BC
-	IF	%1<1
-		LD	DE,	1
+	IF %1<1
+		LD DE, 1
 	ELSE
-		LD	DE,	%1
+		LD DE, %1
 	ENDIF
 	
-	IF	'%2'
-		IF	%2<1
-			LD	B,	1
+	IF '%2'
+		IF %2<1
+			LD B, 1
 		ELSE
-			LD	B,	%2
+			LD B, %2
 		ENDIF
 	ELSE
-		LD	B, 1
+		LD B, 1
 	ENDIF
 	LD		(SLEEPCOUNT),	DE
 	CALL	SLEEP
@@ -226,7 +226,7 @@ SLEEP:							; Sleep for a given number of iterations
 SLEEP1:
 	SUB		1
 	OR		A
-	JP		NZ, SLEEP1
+	JP		NZ,	SLEEP1
 	DJNZ	SLEEP
 	RET
 
