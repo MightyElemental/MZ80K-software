@@ -1,0 +1,246 @@
+;
+;	MONITOR FUNCTIONS
+;
+
+GETL		EQU $0003	; Inputs one line of text from the keyboard.
+CRLF2		EQU	$0006	; Places cursor at start of new line
+CRLF		EQU	$0009	; Places cursor at start of new line if it wasn't already at the start
+PRNTSPACE	EQU	$000C	; Print a space character
+PRNT		EQU $0012	; Print a character (or control)
+MESSAGE		EQU	$0015	; Print a string
+GETKY		EQU	$001B	; Get the current key pressed
+PRTWRD		EQU	$03BA	; Output a 16-bit hexadecimal number contained in HL to the screen
+PRTBYT		EQU	$03C3	; Output a hexadecimal number contained in A to the screen
+DIGASC		EQU	$03DA	
+DISPAC		EQU	$0BCE	; Convert a display code stored in A into its ASCII code
+ASCWRD		EQU $0410	; Convert AF,HL ASCII into hex and store in HL
+CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=row, L=col)
+
+;
+;	EQUATES
+;
+
+
+; CHARACTERS
+SPACESHIP	EQU	$C7
+LEFTKEY		EQU	$41
+RIGHTKEY	EQU	$44
+
+; ADDRESSES
+VIDMEM      EQU $D000
+
+;
+;	MACROS
+;
+
+PRINT		MACRO
+	LD		DE,	%1
+	CALL	MESSAGE
+ENDM
+
+PRINTLN		MACRO
+	IF '%1'
+		PRINT %1
+		CALL CRLF
+	ELSE
+		CALL CRLF2
+	ENDIF
+ENDM
+
+CLS			MACRO
+	LD		A,	$16
+	CALL	PRNT
+ENDM
+
+SLEEPX		MACRO				; Sleep for 0x???? * 0x?? iterations
+	PUSH	DE
+	PUSH	BC
+	IF	%1<1
+		LD	DE,	1
+	ELSE
+		LD	DE,	%1
+	ENDIF
+	
+	IF	'%2'
+		IF	%2<1
+			LD	B,	1
+		ELSE
+			LD	B,	%2
+		ENDIF
+	ELSE
+		LD	B, 1
+	ENDIF
+	LD		(SLEEPCOUNT),	DE
+	CALL	SLEEP
+	POP		BC
+	POP		DE
+ENDM
+
+DRAWBOOL	MACRO
+	LD		A,	(%1)
+	ADD		A,	1
+	LD		(VIDMEM), A
+ENDM
+
+PIXTOMEM	MACRO				; Load X/Y position from pointer arg1 and calculate memory address into HL
+	LD		HL, (%1)			; Load obj pixel position into HL
+	CALL	CALVAD
+ENDM
+
+;
+;	CODE
+;
+
+	ORG		$1200
+
+	CLS							; force clear screen
+	PRINTLN
+START:
+	DRAWBOOL	KEYDOWN
+	PIXTOMEM	PLAYERX
+    LD      (HL),   SPACESHIP	; Draw spaceship
+
+	;REPT	4
+		SLEEPX	$AA, $08
+		CALL	CONTROLS
+		CALL	CHECKKEYDOWN
+	;ENDM
+
+	LD      (HL),   $00			; Clear location
+	
+	CALL	MOVE
+	JP		START
+WAIT1:							; Wait while key is down
+	CALL	GETKY
+	JP		NZ,	WAIT1
+WAIT2:							; Wait until key is pressed
+	CALL	GETKY
+	JP		Z,	WAIT2
+EXIT:
+	CLS							; force clear screen
+	PRINTLN	MSGEXIT
+	JP		$00AD				; Exit to Monitor
+
+
+;
+;	FUNCTIONS
+;
+
+
+;
+;	if(key == 0) { // no input
+;		keydown = 0;
+;	} else { // detected input
+;		if(keydown == 0) { // not being held
+;			keydown = 1;
+;		}
+;	}
+;
+CHECKKEYDOWN:
+	CALL	GETKY				; 00 if not pressed
+	OR		A
+	JP		NZ,	KEYDETECT		; jump if detected keypress
+	LD		A,	0
+	LD		(KEYDOWN), A		; Reset keydown if no key detected
+	RET
+KEYDETECT:
+	LD		A,	(KEYDOWN)
+	OR		A					; zero if KEYDOWN=0
+	RET		NZ					; return if key was being held down prior to current detection
+	LD		A,	1
+	LD		(KEYDOWN), A		; Set keydown if keypress detected
+	RET
+
+;
+;	if(keydown == RIGHTKEY) {
+;		BOOLRIGHT = 1;
+;		return;
+;	}
+;	if(keydown == LEFTKEY) {
+;		BOOLRIGHT = 0;
+;		return;
+;	}
+;
+CONTROLS:
+	CALL	GETKY
+	LD		D,	A
+	RET		Z					; Do nothing if no key pressed
+	SUB		RIGHTKEY
+	JP		Z,	SETRIGHT		; Jump if right pressed
+	LD		A,	D
+	SUB		LEFTKEY
+	JP		Z,	SETLEFT			; Jump if left pressed
+	RET							; Return if neither left nor right were pressed
+SETRIGHT:
+	LD		A,	1
+	LD		(BOOLRIGHT),	A
+	RET
+SETLEFT:
+	LD		A,	0
+	LD		(BOOLRIGHT),	A
+	RET
+
+TOGGLEDIR:
+	LD		A,	(BOOLRIGHT)
+	XOR		1
+	LD		(BOOLRIGHT),	A
+	RET
+
+MOVE:							; INC/DEC HL based on value of (BOOLRIGHT)
+	LD		A,	(KEYDOWN)		; Ensure key is currently being held
+	OR		A
+	RET		Z
+	LD		A,	(BOOLRIGHT)		; Check direction
+	OR		A
+	JP		NZ,	RIGHT			; Right?=True, Move right
+LEFT:							; Right?=False, Move left
+	LD		A,	(PLAYERX)
+	OR		A
+	RET		Z					; Do nothing if playerx is already 0
+	DEC		A
+	LD		(PLAYERX),	A
+	RET
+RIGHT:
+	LD		A,	(PLAYERX)
+	SUB		39
+	RET		Z					; Do nothing if playerx is on right-side of screen
+	LD		A,	(PLAYERX)
+	INC		A
+	LD		(PLAYERX),	A
+	RET
+
+IMULT:							; Multiply D by E and store the result in HL.
+	LD		HL,	0
+	LD		A,	D
+	OR		A
+	RET		Z
+	LD		B,	D
+	LD		D,	H
+IML:
+	ADD		HL,	DE
+	DJNZ	IML
+	RET
+
+SLEEP:							; Sleep for a given number of iterations
+	LD		A,	(SLEEPCOUNT)
+SLEEP1:
+	SUB		1
+	OR		A
+	JP		NZ, SLEEP1
+	DJNZ	SLEEP
+	RET
+
+
+MSG1:		DB	"ENTER 2* 2-DIGIT HEX #S W/O SPACE", $0D
+MSGR:		DB	" RIGHT ", $0D
+MSGL:		DB	" LEFT ", $0D
+MSGRES:		DB	"RESULT:", $0D
+MSGEXIT:	DB	"EXITED PROGRAM", $0D
+SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
+BOOLRIGHT:	DB	$01
+KEYDOWN:	DB	$00	; If a key is being held down
+PLAYERX:	DB	$00
+PLAYERY:	DB	$00
+
+END
+
