@@ -2,7 +2,7 @@
 ;	MONITOR FUNCTIONS
 ;
 
-GETL		EQU $0003	; Inputs one line of text from the keyboard.
+GETL		EQU	$0003	; Inputs one line of text from the keyboard.
 CRLF2		EQU	$0006	; Places cursor at start of new line
 CRLF		EQU	$0009	; Places cursor at start of new line if it wasn't already at the start
 PRNTSPACE	EQU	$000C	; Print a space character
@@ -20,11 +20,17 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 ;	EQUATES
 ;
 
+FLOORHEIGHT	EQU	20
+
 
 ; CHARACTERS
 SPACESHIP	EQU	$C7
+PLAYERSYM	EQU	$DF
+
+; KEYS
 LEFTKEY		EQU	$41
 RIGHTKEY	EQU	$44
+SPACEKEY	EQU	$20
 
 ; ADDRESSES
 VIDMEM      EQU $D000
@@ -52,7 +58,7 @@ CLS			MACRO
 	CALL	PRNT
 ENDM
 
-SLEEPX		MACRO				; Sleep for 0x???? * 0x?? iterations
+SLEEPX		MACRO				; Sleep for 0x?? * 0x?? iterations
 	PUSH	DE
 	PUSH	BC
 	IF %1<1
@@ -94,20 +100,26 @@ ENDM
 	ORG		$1200
 
 	CLS							; force clear screen
-	PRINTLN
+DRAWFLOOR:
+	LD		BC,	40
+	LD		HL,	FLOORHEIGHT+1:00
+	CALL	CALVAD
+	EX		DE,	HL
+	LD		HL,	FLOOR
+	LDIR
 START:
 	DRAWBOOL	KEYDOWN
 	PIXTOMEM	PLAYERX
-    LD      (HL),   SPACESHIP	; Draw spaceship
+    LD      (HL),   PLAYERSYM	; Draw player
 
 	;REPT	4
-		SLEEPX	$AA, $08
+		SLEEPX	$AA, $10
 		CALL	CONTROLS
 		CALL	CHECKKEYDOWN
 	;ENDM
-
-	LD      (HL),   $00			; Clear location
-	
+	; TODO: Fix flickering
+	LD		(HL),	$00			; Clear location
+CM:
 	CALL	MOVE
 	JP		START
 WAIT1:							; Wait while key is down
@@ -170,6 +182,9 @@ CONTROLS:
 	LD		A,	D
 	SUB		LEFTKEY
 	JP		Z,	SETLEFT			; Jump if left pressed
+	LD		A,	D
+	SUB		SPACEKEY
+	JP		Z,	JUMP
 	RET							; Return if neither left nor right were pressed
 SETRIGHT:
 	LD		A,	1
@@ -179,6 +194,14 @@ SETLEFT:
 	LD		A,	0
 	LD		(BOOLRIGHT),	A
 	RET
+JUMP:
+	LD		A,	(PLAYERY)
+	SUB		FLOORHEIGHT
+	RET		NZ					; Do nothing if player is not on the floor
+	LD		A,	(PLAYERY)
+	SUB		10
+	LD		(PLAYERY), A
+	RET
 
 TOGGLEDIR:
 	LD		A,	(BOOLRIGHT)
@@ -186,10 +209,20 @@ TOGGLEDIR:
 	LD		(BOOLRIGHT),	A
 	RET
 
-MOVE:							; INC/DEC HL based on value of (BOOLRIGHT)
-	LD		A,	(KEYDOWN)		; Ensure key is currently being held
+MOVE:							; Update playerx and playery values
+	; Gravity
+	LD		A, (PLAYERY)
+	SUB		FLOORHEIGHT			; Check if on floor
+	JP		Z,	MOVE1
+	LD		A, (PLAYERY)		; Increment PLAYERY if not on floor
+	INC		A
+	LD		(PLAYERY),	A
+MOVE1:
+	; Ensure key is currently being held
+	LD		A,	(KEYDOWN)
 	OR		A
 	RET		Z
+	; Test direction
 	LD		A,	(BOOLRIGHT)		; Check direction
 	OR		A
 	JP		NZ,	RIGHT			; Right?=True, Move right
@@ -230,8 +263,11 @@ SLEEP1:
 	DJNZ	SLEEP
 	RET
 
+; TODO: Verify characters are being assembled correctly
+; CHRMAP		"MZ-ASCII-EU"
 
 MSG1:		DB	"ENTER 2* 2-DIGIT HEX #S W/O SPACE", $0D
+FLOOR:		DB	"ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
 MSGR:		DB	" RIGHT ", $0D
 MSGL:		DB	" LEFT ", $0D
 MSGRES:		DB	"RESULT:", $0D
@@ -240,7 +276,7 @@ SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
 BOOLRIGHT:	DB	$01
 KEYDOWN:	DB	$00	; If a key is being held down
 PLAYERX:	DB	$00
-PLAYERY:	DB	$00
+PLAYERY:	DB	FLOORHEIGHT
 
 END
 
