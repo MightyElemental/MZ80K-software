@@ -1,0 +1,74 @@
+;
+;	MONITOR FUNCTIONS
+;
+
+CRLF2		EQU	$0006
+CRLF		EQU	$0009
+PRNTSPACE	EQU	$000C
+PRNT		EQU $0012
+MESSAGE		EQU	$0015
+GETKY		EQU	$001B
+PRTBYT		EQU	$03C3
+DIGASC		EQU	$03DA
+DISPAC		EQU	$0BCE
+
+;
+;	EQUATES
+;
+
+ESCKEY		EQU	$66
+
+;
+;	MACROS
+;
+
+PRINT		MACRO
+	LD		DE,	%1
+	CALL	MESSAGE
+ENDM
+
+PRINTLN		MACRO
+	IF '%1'
+		PRINT %1
+		CALL CRLF
+	ELSE
+		CALL CRLF2
+	ENDIF
+ENDM
+
+CLS			MACRO
+	LD		A,	$16
+	CALL	PRNT
+ENDM
+
+;
+;	CODE
+;
+
+	ORG		$1200
+
+	CLS						; force clear screen
+	PRINTLN	MSG1			; Show instructions
+	PRINTLN
+START:
+	CALL	GETKY			; Check keyboard, trap PC
+	JP		Z,	START		; if keyboard is not pressed, restart
+	CP		ESCKEY			; Escape key pressed?
+	JP		Z,	EXIT		; Yes? Exit to Monitor.
+	CALL	PRTBYT			; print Key hex value
+	CALL	PRNTSPACE		; print space
+	;CALL	PRNT
+WAIT:
+	CALL	GETKY			; Wait for finger to leave key
+	JP		NZ,	WAIT
+	JP		START			; and do it all again.
+EXIT:
+	CLS						; force clear screen
+	PRINTLN	MSG2
+	JP		$00AD			; Exit to Monitor
+
+MSG1:		DB	"  PRESS ANY KEY (PRESS ", ESCKEY, " TO EXIT)  ", $0D
+MSG2:		DB	"EXITED PROGRAM", $0D
+
+END
+
