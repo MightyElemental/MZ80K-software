@@ -22,6 +22,7 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 
 FLOORHEIGHT	EQU	21
 GRAVITY		EQU	1
+MAXSPEED	EQU	1<<3
 
 
 ; CHARACTERS
@@ -99,6 +100,12 @@ SETBYTE		MACRO
 	LD		(%1),	A
 ENDM
 
+SETBYTEND	MACRO				; Non destructive version of SETBYTE
+	PUSH	AF
+	SETBYTE	%1,	%2
+	POP		AF
+ENDM
+
 PIXTOMEM	MACRO				; Load X/Y position from pointer arg1 and calculate memory address into HL
 	LD		HL, (%1)			; Load obj pixel position into HL
 	CALL	CALVAD
@@ -135,6 +142,17 @@ TESTONFLOOR	MACRO				; C is set if not on floor
 	CP		(FLOORHEIGHT<<2) - 1
 ENDM
 
+CP16		MACRO				; Compare two 16-bit numbers without changing their values
+	PUSH	HL
+	PUSH	BC
+	OR		A					; Clear carry flag
+	SBC		HL,	BC
+	POP		BC
+	POP		HL
+ENDM
+
+
+
 
 
 ;
@@ -165,8 +183,12 @@ START:
 	CURHOME
 	LD		HL,	(PLAYERX)
 	CALL	PRTWRD
-	DRAWBOOL	FLAG,	0,	1
+	CALL	PRNTSPACE
+	LD		HL,	(PLAYVELX)
+	CALL	PRTWRD
+	DRAWBOOL	FLAGFLOOR,	0,	1
 	DRAWBOOL	KEYDOWN,	0,	2
+	DRAWBOOL	FLAGACCX,	0,	3
 	POP		HL
 
 	;REPT	4
@@ -202,24 +224,16 @@ EXIT:
 ;	if(key == 0) { // no input
 ;		keydown = 0;
 ;	} else { // detected input
-;		if(keydown == 0) { // not being held
-;			keydown = 1;
-;		}
+;		keydown = 1;
 ;	}
 ;
 CHECKKEYDOWN:
 	CALL	GETKY				; 00 if not pressed
-	OR		A
 	JP		NZ,	KEYDETECT		; jump if detected keypress
-	LD		A,	0
-	LD		(KEYDOWN), A		; Reset keydown if no key detected
+	SETBYTE	KEYDOWN,	0		; Reset keydown if no key detected
 	RET
 KEYDETECT:
-	LD		A,	(KEYDOWN)
-	OR		A					; zero if KEYDOWN=0
-	RET		NZ					; return if key was being held down prior to current detection
-	LD		A,	1
-	LD		(KEYDOWN), A		; Set keydown if keypress detected
+	SETBYTE	KEYDOWN,	1		; Set if key detected
 	RET
 
 ;
@@ -234,22 +248,27 @@ KEYDETECT:
 ;
 CONTROLS:
 	CALL	GETKY
-	LD		D,	A
 	RET		Z					; Do nothing if no key pressed
-	SUB		RIGHTKEY
-	JP		Z,	SETRIGHT		; if right pressed
-	LD		A,	D
-	SUB		LEFTKEY
-	JP		Z,	SETLEFT			; if left pressed
-	LD		A,	D
-	SUB		SPACEKEY			; if space pressed
-	JP		Z,	JUMP
+	CP		RIGHTKEY
+	JP		Z,	MOVERIGHT		; if right pressed
+	CP		LEFTKEY
+	JP		Z,	MOVELEFT		; if left pressed
+	CP		SPACEKEY			
+	JP		Z,	JUMP			; if space pressed
 	RET							; Return if neither left nor right were pressed
-SETRIGHT:
+MOVERIGHT:
 	SETBYTE	BOOLRIGHT,	1
+	LD		A,	(PLAYVELX)
+	INC		A
+	CALL	CLAMPVELX
+	LD		(PLAYVELX),	A
 	RET
-SETLEFT:
+MOVELEFT:
 	SETBYTE	BOOLRIGHT,	0
+	LD		A,	(PLAYVELX)
+	DEC		A
+	CALL	CLAMPVELX
+	LD		(PLAYVELX),	A
 	RET
 JUMP:
 	TESTONFLOOR					; Check if on floor
@@ -260,21 +279,40 @@ JUMP:
 	LD		(PLAYERY), A
 	RET
 
+CLAMPVELX:						; This assumes xVel is loaded into reg A
+	CP		0
+	JP		M,	CVXNEG
+CVXPOS:
+	PRINT	MSGR
+	;LD		A,	(PLAYVELX)
+	CP		MAXSPEED
+	JP		P,	CVXPOSMAX
+	RET
+CVXNEG:
+	PRINT	MSGL
+	CP		MAXSPEED
+	JP		M,	CVXNEGMAX
+	RET
+CVXPOSMAX:
+	LD		A,	MAXSPEED
+	RET
+CVXNEGMAX:
+	LD		A, -MAXSPEED
+	RET
+
 TOGGLEDIR:
 	LD		A,	(BOOLRIGHT)
 	XOR		1
 	LD		(BOOLRIGHT),	A
 	RET
 
-
-
 MOVE:							; Update playerx and playery values
 	; Gravity
 	TESTONFLOOR					; Check if on floor
-	SETBYTE	FLAG,	0
+	SETBYTEND	FLAGFLOOR,	0
 	LD		A,	0				; If on floor, set Y velocity to 0 (p1)
 	JP		NC,	MOVE1			; If on floor, skip gravity
-	SETBYTE	FLAG,	1
+	SETBYTEND	FLAGFLOOR,	1
 	LD		A,	(PLAYERY)		; Increment PLAYERY if not on floor
 	LD		HL,	PLAYVELY
 	ADD		A,	(HL)
@@ -284,37 +322,45 @@ MOVE:							; Update playerx and playery values
 	JP		C,	MOVE2			; If not on floor, add gravity
 	LD		A,	FLOORHEIGHT<<2	; If on or below floor, set y to floor
 	LD		(PLAYERY),	A
-	LD		A,	0
+	LD		A,	0				; If on floor, set Y velocity to 0 (p1)
 	JP		MOVE1
-
 MOVE2:
 	; Update Y velocity
 	LD		A,	(PLAYVELY)
 	ADD		A,	GRAVITY
 MOVE1:
 	LD		(PLAYVELY),	A		; set Y velocity to either 0 or Yvel-Gravity (p2)
-	; Ensure key is currently being held
-	LD		A,	(KEYDOWN)
+	LD		A,	(KEYDOWN)		; Test if a key is currently being held
 	OR		A
-	RET		Z
-	; Test direction
-	LD		A,	(BOOLRIGHT)		; Check direction
-	OR		A
-	JP		NZ,	RIGHT			; Right?=True, Move right
-LEFT:							; Right?=False, Move left
-	LD		A,	(PLAYERX)
-	OR		A
-	RET		Z					; Do nothing if playerx is already 0
-	DEC		A		; TODO: Change to velocity
+	LD		A,	(PLAYVELX)
+	JP		NZ,	MOVEX			; If a key is pressed, move
+
+	SETBYTEND	FLAGACCX,	0
+
+	PUSH	AF
+	TESTONFLOOR
+	POP		AF
+	JP		C,	MOVEX
+	
+	CALL	STEPTOZERO			; Gradually reduce Xvel to 0 if no key pressed
+	LD		(PLAYVELX),	A
+MOVEX:
+	LD		HL,	PLAYERX			; Add Xvel to Xpos
+	ADD		A,	(HL)
 	LD		(PLAYERX),	A
+MOVEXWALL:						; Wrap player around screen
+	SRL		A					; 
+	CP		-10
+	JP		M,	MOVEXWALLLEFT	; Player has gone left off screen
+	CP		(39<<1)+1
+	RET		M					; Player has not gone right off screen
+MOVEXWALLRIGHT:
+	PRINT	MSGR
+	SETBYTE	PLAYERX,	0
 	RET
-RIGHT:
-	LD		A,	(PLAYERX)
-	SUB		39<<2
-	RET		Z					; Do nothing if playerx is on right-side of screen
-	LD		A,	(PLAYERX)
-	INC		A		; TODO: Change to velocity
-	LD		(PLAYERX),	A
+MOVEXWALLLEFT:
+	PRINT	MSGL
+	SETBYTE	PLAYERX,	39<<2
 	RET
 
 IMULT:							; Multiply D by E and store the result in HL.
@@ -338,6 +384,19 @@ SLEEP1:
 	DJNZ	SLEEP
 	RET
 
+STEPTOZERO:						; INC/DEC A towards zero depending on polarity
+	CP		0
+	RET		Z					; Already zero
+	JP		M,	STZNEG			; Negative
+STZPOS:
+	SETBYTEND	FLAGACCX,	1
+	DEC		A
+	RET
+STZNEG:
+	SETBYTEND	FLAGACCX,	2
+	INC		A
+	RET
+
 ; TODO: Verify characters are being assembled correctly
 ; CHRMAP		"MZ-ASCII-EU"
 
@@ -354,7 +413,8 @@ PLAYERX:	DB	$00
 PLAYERY:	DB	FLOORHEIGHT<<2
 PLAYVELX:	DB	$00
 PLAYVELY:	DB	$00
-FLAG:		DB	$00	; An indicator flag for debugging
+FLAGFLOOR:	DB	$00	; An indicator flag for debugging
+FLAGACCX:	DB	$00
 
 END
 
