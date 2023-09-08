@@ -21,6 +21,7 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 ;
 
 FLOORHEIGHT	EQU	20
+GRAVITY		EQU	1
 
 
 ; CHARACTERS
@@ -51,6 +52,11 @@ PRINTLN		MACRO
 	ELSE
 		CALL CRLF2
 	ENDIF
+ENDM
+
+CURHOME		MACRO
+	LD		A,	$15
+	CALL	PRNT
 ENDM
 
 CLS			MACRO
@@ -84,8 +90,13 @@ ENDM
 
 DRAWBOOL	MACRO
 	LD		A,	(%1)
-	ADD		A,	1
-	LD		(VIDMEM), A
+	ADD		A,	32
+	LD		(VIDMEM+%2+%3*40), A
+ENDM
+
+SETBYTE		MACRO
+	LD		A,	%2
+	LD		(%1),	A
 ENDM
 
 PIXTOMEM	MACRO				; Load X/Y position from pointer arg1 and calculate memory address into HL
@@ -93,9 +104,47 @@ PIXTOMEM	MACRO				; Load X/Y position from pointer arg1 and calculate memory add
 	CALL	CALVAD
 ENDM
 
+POSTOPIX	MACRO				; Convert X/Y fixed-point position into pixel position and store in HL
+	LD		A,	(%1)			; Convert & save X
+	SRL		A
+	SRL		A
+	LD		L,	A
+
+	LD		A,	(%2)			; Convert & save Y
+	SRL		A
+	SRL		A
+	LD		H,	A
+ENDM
+
+POSTOMEM	MACRO
+	POSTOPIX	%1,	%2
+	CALL	CALVAD
+ENDM
+
+PRINTRA		MACRO				; Print the contents of A onto the screen as Hex value (non destructive to AF)
+	PUSH	AF
+	CALL	PRTBYT
+	POP		AF
+ENDM
+
+TESTONFLOOR	MACRO				; Z is set if on floor
+	LD		A,	(PLAYERY)
+	SRL		A
+	SRL		A
+	CP		FLOORHEIGHT
+ENDM
+
+
+
+
+
 ;
 ;	CODE
 ;
+
+
+
+
 
 	ORG		$1200
 
@@ -108,8 +157,9 @@ DRAWFLOOR:
 	LD		HL,	FLOOR
 	LDIR
 START:
-	DRAWBOOL	KEYDOWN
-	PIXTOMEM	PLAYERX
+	DRAWBOOL	FLAG,	0,	0
+	POSTOMEM	PLAYERX,	PLAYERY
+
     LD      (HL),   PLAYERSYM	; Draw player
 
 	;REPT	4
@@ -178,28 +228,25 @@ CONTROLS:
 	LD		D,	A
 	RET		Z					; Do nothing if no key pressed
 	SUB		RIGHTKEY
-	JP		Z,	SETRIGHT		; Jump if right pressed
+	JP		Z,	SETRIGHT		; if right pressed
 	LD		A,	D
 	SUB		LEFTKEY
-	JP		Z,	SETLEFT			; Jump if left pressed
+	JP		Z,	SETLEFT			; if left pressed
 	LD		A,	D
-	SUB		SPACEKEY
+	SUB		SPACEKEY			; if space pressed
 	JP		Z,	JUMP
 	RET							; Return if neither left nor right were pressed
 SETRIGHT:
-	LD		A,	1
-	LD		(BOOLRIGHT),	A
+	SETBYTE	BOOLRIGHT,	1
 	RET
 SETLEFT:
-	LD		A,	0
-	LD		(BOOLRIGHT),	A
+	SETBYTE	BOOLRIGHT,	0
 	RET
 JUMP:
+	TESTONFLOOR					; Check if on floor
+	RET		NZ					; Return if player is not on the floor
 	LD		A,	(PLAYERY)
-	SUB		FLOORHEIGHT
-	RET		NZ					; Do nothing if player is not on the floor
-	LD		A,	(PLAYERY)
-	SUB		10
+	SUB		10<<2
 	LD		(PLAYERY), A
 	RET
 
@@ -211,11 +258,12 @@ TOGGLEDIR:
 
 MOVE:							; Update playerx and playery values
 	; Gravity
-	LD		A, (PLAYERY)
-	SUB		FLOORHEIGHT			; Check if on floor
+	TESTONFLOOR					; Check if on floor
+	SETBYTE	FLAG,	0
 	JP		Z,	MOVE1
-	LD		A, (PLAYERY)		; Increment PLAYERY if not on floor
-	INC		A
+	SETBYTE	FLAG,	1
+	LD		A,	(PLAYERY)		; Increment PLAYERY if not on floor
+	ADD		A,	GRAVITY	; TODO: Change to velocity
 	LD		(PLAYERY),	A
 MOVE1:
 	; Ensure key is currently being held
@@ -230,15 +278,15 @@ LEFT:							; Right?=False, Move left
 	LD		A,	(PLAYERX)
 	OR		A
 	RET		Z					; Do nothing if playerx is already 0
-	DEC		A
+	DEC		A		; TODO: Change to velocity
 	LD		(PLAYERX),	A
 	RET
 RIGHT:
 	LD		A,	(PLAYERX)
-	SUB		39
+	SUB		39<<2
 	RET		Z					; Do nothing if playerx is on right-side of screen
 	LD		A,	(PLAYERX)
-	INC		A
+	INC		A		; TODO: Change to velocity
 	LD		(PLAYERX),	A
 	RET
 
@@ -276,7 +324,10 @@ SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
 BOOLRIGHT:	DB	$01
 KEYDOWN:	DB	$00	; If a key is being held down
 PLAYERX:	DB	$00
-PLAYERY:	DB	FLOORHEIGHT
+PLAYERY:	DB	FLOORHEIGHT<<2
+PLAYVELX:	DB	$00
+PLAYVELY:	DB	$00
+FLAG:		DB	$00	; An indicator flag for debugging
 
 END
 
