@@ -137,7 +137,7 @@ ENDM
 ;
 ;	C = PLAYERY < FLOORHEIGHT - 0.25
 ;
-TESTONFLOOR	MACRO				; C is set if not on floor
+TESTONFLOOR	MACRO				; C is set if not on floor (NC on floor)
 	LD		A,	(PLAYERY)
 	CP		(FLOORHEIGHT<<2) - 1
 ENDM
@@ -192,7 +192,7 @@ START:
 	POP		HL
 
 	;REPT	4
-		SLEEPX	$AA, $10
+		SLEEPX	$AA, $10 ;10
 		CALL	CONTROLS
 		CALL	CHECKKEYDOWN
 	;ENDM
@@ -220,20 +220,19 @@ EXIT:
 ;
 
 
-;
-;	if(key == 0) { // no input
-;		keydown = 0;
-;	} else { // detected input
-;		keydown = 1;
-;	}
-;
 CHECKKEYDOWN:
 	CALL	GETKY				; 00 if not pressed
 	JP		NZ,	KEYDETECT		; jump if detected keypress
 	SETBYTE	KEYDOWN,	0		; Reset keydown if no key detected
 	RET
 KEYDETECT:
-	SETBYTE	KEYDOWN,	1		; Set if key detected
+	CP		LEFTKEY
+	JP		Z,	KEYDETECTOK
+	CP		RIGHTKEY
+	JP		Z,	KEYDETECTOK
+	RET
+KEYDETECTOK:
+	SETBYTE	KEYDOWN,	1		; Set if left/right key detected
 	RET
 
 ;
@@ -283,14 +282,11 @@ CLAMPVELX:						; This assumes xVel is loaded into reg A
 	CP		0
 	JP		M,	CVXNEG
 CVXPOS:
-	PRINT	MSGR
-	;LD		A,	(PLAYVELX)
 	CP		MAXSPEED
 	JP		P,	CVXPOSMAX
 	RET
 CVXNEG:
-	PRINT	MSGL
-	CP		MAXSPEED
+	CP		-MAXSPEED
 	JP		M,	CVXNEGMAX
 	RET
 CVXPOSMAX:
@@ -307,29 +303,28 @@ TOGGLEDIR:
 	RET
 
 MOVE:							; Update playerx and playery values
-	; Gravity
+	SETBYTEND	FLAGFLOOR,	0	; Reset onFloor flag
 	TESTONFLOOR					; Check if on floor
-	SETBYTEND	FLAGFLOOR,	0
-	LD		A,	0				; If on floor, set Y velocity to 0 (p1)
-	JP		NC,	MOVE1			; If on floor, skip gravity
-	SETBYTEND	FLAGFLOOR,	1
-	LD		A,	(PLAYERY)		; Increment PLAYERY if not on floor
+	LD		A,	0				; If on floor, set yVel to 0 (p1)
+	JP		NC,	MOVE1			; If on floor, skip yVel calculations
+	SETBYTEND	FLAGFLOOR,	1	; Set onFloor flag
+	LD		A,	(PLAYERY)		; Add yVel to yPos
 	LD		HL,	PLAYVELY
 	ADD		A,	(HL)
 	LD		(PLAYERY),	A
 
-	TESTONFLOOR					; Check if on or below floor and fix ypos and yvel
+	TESTONFLOOR					; Check if on or below floor and fix yPos and yVel
 	JP		C,	MOVE2			; If not on floor, add gravity
-	LD		A,	FLOORHEIGHT<<2	; If on or below floor, set y to floor
+	LD		A,	FLOORHEIGHT<<2	; If on or below floor, set yPos to floor
 	LD		(PLAYERY),	A
-	LD		A,	0				; If on floor, set Y velocity to 0 (p1)
-	JP		MOVE1
+	LD		A,	0				; If on floor, set yVel to 0 (p1)
+	JP		MOVE1				; Skip gravity if on floor
 MOVE2:
 	; Update Y velocity
 	LD		A,	(PLAYVELY)
 	ADD		A,	GRAVITY
 MOVE1:
-	LD		(PLAYVELY),	A		; set Y velocity to either 0 or Yvel-Gravity (p2)
+	LD		(PLAYVELY),	A		; set yVel to either 0 or yVel-gravity (p2)
 	LD		A,	(KEYDOWN)		; Test if a key is currently being held
 	OR		A
 	LD		A,	(PLAYVELX)
@@ -340,7 +335,7 @@ MOVE1:
 	PUSH	AF
 	TESTONFLOOR
 	POP		AF
-	JP		C,	MOVEX
+	JP		M,	MOVEX
 	
 	CALL	STEPTOZERO			; Gradually reduce Xvel to 0 if no key pressed
 	LD		(PLAYVELX),	A
@@ -409,7 +404,7 @@ MSGEXIT:	DB	"EXITED PROGRAM", $0D
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
 BOOLRIGHT:	DB	$01
 KEYDOWN:	DB	$00	; If a key is being held down
-PLAYERX:	DB	$00
+PLAYERX:	DB	$14<<2
 PLAYERY:	DB	FLOORHEIGHT<<2
 PLAYVELX:	DB	$00
 PLAYVELY:	DB	$00
