@@ -20,7 +20,7 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 ;	EQUATES
 ;
 
-FLOORHEIGHT	EQU	20
+FLOORHEIGHT	EQU	21
 GRAVITY		EQU	1
 
 
@@ -127,14 +127,13 @@ PRINTRA		MACRO				; Print the contents of A onto the screen as Hex value (non de
 	POP		AF
 ENDM
 
-TESTONFLOOR	MACRO				; Z is set if on floor
+;
+;	C = PLAYERY < FLOORHEIGHT - 0.25
+;
+TESTONFLOOR	MACRO				; C is set if not on floor
 	LD		A,	(PLAYERY)
-	SRL		A
-	SRL		A
-	CP		FLOORHEIGHT
+	CP		(FLOORHEIGHT<<2) - 1
 ENDM
-
-
 
 
 
@@ -157,10 +156,18 @@ DRAWFLOOR:
 	LD		HL,	FLOOR
 	LDIR
 START:
-	DRAWBOOL	FLAG,	0,	0
 	POSTOMEM	PLAYERX,	PLAYERY
 
     LD      (HL),   PLAYERSYM	; Draw player
+
+	; DEBUG
+	PUSH	HL
+	CURHOME
+	LD		HL,	(PLAYERX)
+	CALL	PRTWRD
+	DRAWBOOL	FLAG,	0,	1
+	DRAWBOOL	KEYDOWN,	0,	2
+	POP		HL
 
 	;REPT	4
 		SLEEPX	$AA, $10
@@ -172,6 +179,8 @@ START:
 CM:
 	CALL	MOVE
 	JP		START
+
+
 WAIT1:							; Wait while key is down
 	CALL	GETKY
 	JP		NZ,	WAIT1
@@ -244,9 +253,10 @@ SETLEFT:
 	RET
 JUMP:
 	TESTONFLOOR					; Check if on floor
-	RET		NZ					; Return if player is not on the floor
+	RET		C					; Return if player is not on the floor
+	SETBYTE	PLAYVELY,	(-1<<3) -4
 	LD		A,	(PLAYERY)
-	SUB		10<<2
+	SUB		1<<1
 	LD		(PLAYERY), A
 	RET
 
@@ -256,16 +266,33 @@ TOGGLEDIR:
 	LD		(BOOLRIGHT),	A
 	RET
 
+
+
 MOVE:							; Update playerx and playery values
 	; Gravity
 	TESTONFLOOR					; Check if on floor
 	SETBYTE	FLAG,	0
-	JP		Z,	MOVE1
+	LD		A,	0				; If on floor, set Y velocity to 0 (p1)
+	JP		NC,	MOVE1			; If on floor, skip gravity
 	SETBYTE	FLAG,	1
 	LD		A,	(PLAYERY)		; Increment PLAYERY if not on floor
-	ADD		A,	GRAVITY	; TODO: Change to velocity
+	LD		HL,	PLAYVELY
+	ADD		A,	(HL)
 	LD		(PLAYERY),	A
+
+	TESTONFLOOR					; Check if on or below floor and fix ypos and yvel
+	JP		C,	MOVE2			; If not on floor, add gravity
+	LD		A,	FLOORHEIGHT<<2	; If on or below floor, set y to floor
+	LD		(PLAYERY),	A
+	LD		A,	0
+	JP		MOVE1
+
+MOVE2:
+	; Update Y velocity
+	LD		A,	(PLAYVELY)
+	ADD		A,	GRAVITY
 MOVE1:
+	LD		(PLAYVELY),	A		; set Y velocity to either 0 or Yvel-Gravity (p2)
 	; Ensure key is currently being held
 	LD		A,	(KEYDOWN)
 	OR		A
