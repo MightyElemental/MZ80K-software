@@ -95,6 +95,12 @@ DRAWBOOL	MACRO
 	LD		(VIDMEM+%2+%3*40), A
 ENDM
 
+DRAWBOOLND	MACRO
+	PUSH	AF
+	DRAWBOOL	%1,	%2,	%3
+	POP		AF
+ENDM
+
 SETBYTE		MACRO
 	LD		A,	%2
 	LD		(%1),	A
@@ -139,7 +145,13 @@ ENDM
 ;
 TESTONFLOOR	MACRO				; C is set if not on floor (NC on floor)
 	LD		A,	(PLAYERY)
-	CP		(FLOORHEIGHT<<2) - 1
+	CP		(FLOORHEIGHT<<2)
+ENDM
+
+TESTONFLOORND	MACRO			; Non-Destructive version of TESTONFLOOR
+	PUSH	AF
+	TESTONFLOOR
+	POP		AF
 ENDM
 
 CP16		MACRO				; Compare two 16-bit numbers without changing their values
@@ -327,35 +339,35 @@ MOVE1:
 	LD		(PLAYVELY),	A		; set yVel to either 0 or yVel-gravity (p2)
 	LD		A,	(KEYDOWN)		; Test if a key is currently being held
 	OR		A
-	LD		A,	(PLAYVELX)
 	JP		NZ,	MOVEX			; If a key is pressed, move
 
-	SETBYTEND	FLAGACCX,	0
+	SETBYTE	FLAGACCX,	9
 
-	PUSH	AF
-	TESTONFLOOR
-	POP		AF
-	JP		M,	MOVEX
-	
+	LD		A,	(FLAGFLOOR)		; If not on floor, skip friction calculation
+	OR		A
+	JP		NZ,	MOVEX
+
+	LD		A,	(PLAYVELX)
 	CALL	STEPTOZERO			; Gradually reduce Xvel to 0 if no key pressed
 	LD		(PLAYVELX),	A
 MOVEX:
-	LD		HL,	PLAYERX			; Add Xvel to Xpos
+	LD		A,	(PLAYVELX)		; Add Xvel to Xpos
+	LD		HL,	PLAYERX
 	ADD		A,	(HL)
 	LD		(PLAYERX),	A
 MOVEXWALL:						; Wrap player around screen
-	SRL		A					; 
-	CP		-10
+	SRL		A					; Remove a digit of precision to circumvent signed-byte limitations
+	CP		-10					; ngl, I have no clue why this works
 	JP		M,	MOVEXWALLLEFT	; Player has gone left off screen
 	CP		(39<<1)+1
 	RET		M					; Player has not gone right off screen
 MOVEXWALLRIGHT:
-	PRINT	MSGR
-	SETBYTE	PLAYERX,	0
+	;PRINT	MSGR
+	SETBYTE	PLAYERX,	0		; Wrap player around to left side
 	RET
 MOVEXWALLLEFT:
-	PRINT	MSGL
-	SETBYTE	PLAYERX,	39<<2
+	;PRINT	MSGL
+	SETBYTE	PLAYERX,	39<<2	; Wrap player around to right side
 	RET
 
 IMULT:							; Multiply D by E and store the result in HL.
@@ -380,6 +392,7 @@ SLEEP1:
 	RET
 
 STEPTOZERO:						; INC/DEC A towards zero depending on polarity
+	SETBYTEND	FLAGACCX,	0
 	CP		0
 	RET		Z					; Already zero
 	JP		M,	STZNEG			; Negative
