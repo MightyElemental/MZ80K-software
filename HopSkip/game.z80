@@ -23,6 +23,8 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 FLOORHEIGHT	EQU	21
 GRAVITY		EQU	1
 MAXSPEED	EQU	1<<3
+OBJCOUNT	EQU	4
+OBJVALS		EQU	8
 
 
 ; CHARACTERS
@@ -140,6 +142,17 @@ PRINTRA		MACRO				; Print the contents of A onto the screen as Hex value (non de
 	POP		AF
 ENDM
 
+STOOBJLAST	MACRO
+	IF '%1' == 'X'
+		LD		A,	(IX+0)
+		LD		(IX+6),	A			; Store current xPos into lastX
+	ENDIF
+	IF '%1' == 'Y'
+		LD		A,	(IX+1)
+		LD		(IX+7),	A			; Store current yPos into lastY
+	ENDIF
+ENDM
+
 ;
 ;	C = PLAYERY < FLOORHEIGHT - 0.25
 ;
@@ -186,9 +199,15 @@ DRAWFLOOR:
 	LD		HL,	FLOOR
 	LDIR
 START:
+	LD		HL,	(PLAYLASTXY)	; Clear last player location
+	LD		(HL),	$00
+
 	POSTOMEM	PLAYERX,	PLAYERY
+	LD		(PLAYLASTXY),	HL
 
     LD      (HL),   PLAYERSYM	; Draw player
+
+	CALL	DRAWOBJS
 
 	; DEBUG
 	PUSH	HL
@@ -201,17 +220,16 @@ START:
 	DRAWDIGIT	FLAGFLOOR,	0,	1
 	DRAWDIGIT	KEYDOWN,	0,	2
 	DRAWDIGIT	FLAGACCX,	0,	3
+	DRAWDIGIT	SCORE,		0,	4
 	POP		HL
 
-	;REPT	4
-		SLEEPX	$AA, $10 ;10
-		CALL	CONTROLS
-		CALL	CHECKKEYDOWN
-	;ENDM
-	; TODO: Fix flickering
-	LD		(HL),	$00			; Clear location
+	SLEEPX	$AA, $10 ;10
+	CALL	CONTROLS
+	CALL	CHECKKEYDOWN
+
 CM:
 	CALL	MOVE
+	CALL	PROCESSOBJS
 	JP		START
 
 
@@ -231,6 +249,23 @@ EXIT:
 ;	FUNCTIONS
 ;
 
+DRAWOBJS:
+	LD		B,	OBJCOUNT
+DRAWOBJ:
+	CALL	OBJHEADIDX			; Object header stored in IX
+
+	POSTOMEM	IX+6,	IX+7
+	LD		(HL),	$00			; Clear location
+
+	POSTOMEM	IX,	IX+1
+	LD		A,	(IX+5)
+	LD      (HL),   A			; Draw object
+	STOOBJLAST	X
+	STOOBJLAST	Y
+
+	DJNZ	DRAWOBJ
+	RET
+
 
 CHECKKEYDOWN:
 	CALL	GETKY				; 00 if not pressed
@@ -248,12 +283,20 @@ KEYDETECTOK:
 	RET
 
 ;
-;	if(keydown == RIGHTKEY) {
+;	if (keydown == RIGHTKEY) {
 ;		BOOLRIGHT = 1;
+;		PLAYVELX += 1;
+;		PLAYVELX = PLAYVELX > MAXSPEED ? MAXSPEED;
 ;		return;
-;	}
-;	if(keydown == LEFTKEY) {
+;	} else if (keydown == LEFTKEY) {
 ;		BOOLRIGHT = 0;
+;		PLAYVELX -= 1;
+;		PLAYVELX = PLAYVELX < -MAXSPEED ? -MAXSPEED;
+;		return;
+;	} else if (keydown == SPACEKEY) {
+;		if (!onFloor()) return;
+;		PLAYVELY = (-1<<3) -4;
+;		PLAYERY -= 1;
 ;		return;
 ;	}
 ;
@@ -286,7 +329,7 @@ JUMP:
 	RET		C					; Return if player is not on the floor
 	SETBYTE	PLAYVELY,	(-1<<3) -4
 	LD		A,	(PLAYERY)
-	SUB		1<<1
+	DEC		A
 	LD		(PLAYERY), A
 	RET
 
@@ -370,7 +413,7 @@ MOVEXWALLLEFT:
 	SETBYTE	PLAYERX,	39<<2	; Wrap player around to right side
 	RET
 
-IMULT:							; Multiply D by E and store the result in HL.
+IMULT:							; Multiply D by E and store the result in HL (destructive to BC,DE,AF)
 	LD		HL,	0
 	LD		A,	D
 	OR		A
@@ -405,24 +448,94 @@ STZNEG:
 	INC		A
 	RET
 
+RAND8:							; Generate a pseudo-random number (not great, but good enough)
+	LD		A,	(RSEED)
+	AND		$B8
+	SCF
+	JP		PO,	RANDNOCLR
+	CCF
+RANDNOCLR:
+	LD		HL,	RSEED
+	LD		A,	R
+	ADD		A,	(HL)
+	RLA
+	LD		(RSEED),	A
+	RET
+
+PROCESSOBJS:					; Updates all enemy objects
+	LD		B,	OBJCOUNT		; Number of objects to cycle through
+UPDATEOBJ:
+	CALL	OBJHEADIDX			; Calculate memory address
+
+	LD		A,	(IX+0)
+	ADD		A,	(IX+2)			; Add xVel to xPos
+	LD		(IX+0),	A
+	SRL		A
+	CP		-8
+	CALL	M,	OBJLEFT
+
+	DJNZ	UPDATEOBJ			; Loop if there are still objects to process
+	RET
+
+OBJHEADIDX:						; Save address of object header in IX based on object index stored in B
+	LD		E,	B
+	DEC		E
+	LD		D,	OBJVALS			; Number of elements in each object
+	PUSH	BC
+	CALL	IMULT
+	POP		BC
+	EX		DE,	HL
+	LD		IX,	OBJECTDEFS
+	ADD		IX,	DE				; Calculate the memory address for the next object and store in IX
+	RET
+
+OBJLEFT:						; Increase score if object leaves screen on left
+	LD		HL,	SCORE
+	INC		(HL)
+	CALL	OBJRESET
+	RET
+
+OBJRESET:						; Resets object at header IX
+	CALL	RAND8
+	AND		0011_1100B
+	ADD		A,	6<<2
+	LD		(IX+1),	A
+
+	LD		(IX+0),	39<<2
+	RET
+
 ; TODO: Verify characters are being assembled correctly
 ; CHRMAP		"MZ-ASCII-EU"
 
 MSG1:		DB	"ENTER 2* 2-DIGIT HEX #S W/O SPACE", $0D
-FLOOR:		DB	"ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+FLOOR:		DS	40, $FF
 MSGR:		DB	" RIGHT ", $0D
 MSGL:		DB	" LEFT ", $0D
 MSGRES:		DB	"RESULT:", $0D
 MSGEXIT:	DB	"EXITED PROGRAM", $0D
+MSGSCORE:	DB	"SCORE: ", $0D
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
+RSEED:		DB	$A1
 BOOLRIGHT:	DB	$01
 KEYDOWN:	DB	$00	; If a key is being held down
 PLAYERX:	DB	$14<<2
 PLAYERY:	DB	FLOORHEIGHT<<2
 PLAYVELX:	DB	$00
 PLAYVELY:	DB	$00
+PLAYLASTXY:	DS	2	
 FLAGFLOOR:	DB	$00	; An indicator flag for debugging
 FLAGACCX:	DB	$00
+SCORE:		DB	$00
+
+;
+; Objects to dodge
+;
+; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: height | 5: sym | 6: lastX | 7: lastY
+OBJECTDEFS:
+OBJ1H:		DB	38<<2,	12<<2,	-0001_0000B,	4,	2,	$C7,	38<<2,	12<<2
+OBJ2H:		DB	20<<2,	15<<2,	-0000_1000B,	4,	2,	$53,	20<<2,	15<<2
+OBJ3H:		DB	10<<2,	18<<2,	-0000_0100B,	4,	2,	$C8,	10<<2,	18<<2
+OBJ4H:		DB	10<<2,	20<<2,	-0000_0111B,	4,	2,	$E4,	10<<2,	18<<2
 
 END
 
