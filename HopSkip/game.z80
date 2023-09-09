@@ -228,8 +228,8 @@ START:
 	CALL	CHECKKEYDOWN
 
 CM:
-	CALL	MOVE
 	CALL	PROCESSOBJS
+	CALL	MOVE
 	JP		START
 
 
@@ -266,13 +266,15 @@ DRAWOBJ:
 	DJNZ	DRAWOBJ
 	RET
 
-
+;
+;	keydown = 0;
+;	if (key == LEFTKEY || key == RIGHTKEY) {
+;		keydown = 1;
+;	}
+;
 CHECKKEYDOWN:
+	SETBYTE	KEYDOWN,	0		; Reset keydown
 	CALL	GETKY				; 00 if not pressed
-	JP		NZ,	KEYDETECT		; jump if detected keypress
-	SETBYTE	KEYDOWN,	0		; Reset keydown if no key detected
-	RET
-KEYDETECT:
 	CP		LEFTKEY
 	JP		Z,	KEYDETECTOK
 	CP		RIGHTKEY
