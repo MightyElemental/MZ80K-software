@@ -12,6 +12,7 @@ GETKY		EQU	$001B	; Get the current key pressed
 PRTWRD		EQU	$03BA	; Output a 16-bit hexadecimal number contained in HL to the screen
 PRTBYT		EQU	$03C3	; Output a hexadecimal number contained in A to the screen
 DIGASC		EQU	$03DA	
+SNCV		EQU	$0DA6	; Wait for V-Blank
 DISPAC		EQU	$0BCE	; Convert a display code stored in A into its ASCII code
 ASCWRD		EQU	$0410	; Convert AF,HL ASCII into hex and store in HL
 CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=row, L=col)
@@ -199,40 +200,42 @@ DRAWFLOOR:
 	LD		HL,	FLOOR
 	LDIR
 START:
-	LD		HL,	(PLAYLASTXY)	; Clear last player location
-	LD		(HL),	$00
 
-	POSTOMEM	PLAYERX,	PLAYERY
-	LD		(PLAYLASTXY),	HL
-
-    LD      (HL),   PLAYERSYM	; Draw player
-
-	CALL	DRAWOBJS
+	CALL	SNCV				; Wait for V-Blank before drawing
 
 	; DEBUG
 	PUSH	HL
-	CURHOME
-	LD		HL,	(PLAYERX)
-	CALL	PRTWRD
-	CALL	PRNTSPACE
-	LD		HL,	(PLAYVELX)
-	CALL	PRTWRD
-	DRAWDIGIT	FLAGFLOOR,	0,	1
-	DRAWDIGIT	KEYDOWN,	0,	2
-	DRAWDIGIT	FLAGACCX,	0,	3
-	DRAWDIGIT	SCORE,		0,	4
+	;CURHOME
+	;LD		HL,	(PLAYERX)
+	;CALL	PRTWRD
+	;CALL	PRNTSPACE
+	;LD		HL,	(PLAYVELX)
+	;CALL	PRTWRD
+	DRAWDIGIT	FLAGFLOOR,	0,	23
+	DRAWDIGIT	KEYDOWN,	2,	23
+	DRAWDIGIT	FLAGACCX,	4,	23
+	DRAWDIGIT	SCORE,		6,	23
 	POP		HL
+	CALL	DRAWPLAYER
+	CALL	DRAWOBJS
 
-	SLEEPX	$AA, $10 ;10
+	SLEEPX	$AA, $20 ;10
 	CALL	CONTROLS
 	CALL	CHECKKEYDOWN
 
 CM:
 	CALL	PROCESSOBJS
 	CALL	MOVE
+	CALL	CHKCOLLISION
 	JP		START
 
-
+GAMEOVER:
+	CALL	DRAWPLAYER
+	CURHOME
+	PRINTLN	MSGGAMOVR
+	SLEEPX	$FF,	$FF
+	SLEEPX	$FF,	$FF
+	SLEEPX	$FF,	$FF
 WAIT1:							; Wait while key is down
 	CALL	GETKY
 	JP		NZ,	WAIT1
@@ -248,6 +251,31 @@ EXIT:
 ;
 ;	FUNCTIONS
 ;
+
+CHKCOLLISION:
+	POSTOMEM	PLAYERX,	PLAYERY
+	LD		A,	(HL)
+	CP		0
+	RET		Z
+	CP		SPACESHIP
+	JP		Z,	COLLISION
+	RET
+COLLISION:
+	;POP		AF
+	;JP		GAMEOVER
+	LD		HL,	SCORE
+	INC		(HL)
+	RET
+
+DRAWPLAYER:
+	LD		HL,	(PLAYLASTXY)	; Clear last player location
+	LD		(HL),	$00
+
+	POSTOMEM PLAYERX, PLAYERY	; Save 
+	LD		(PLAYLASTXY),	HL
+
+    LD      (HL),   PLAYERSYM	; Draw player
+	RET
 
 DRAWOBJS:
 	LD		B,	OBJCOUNT
@@ -491,9 +519,7 @@ OBJHEADIDX:						; Save address of object header in IX based on object index sto
 	ADD		IX,	DE				; Calculate the memory address for the next object and store in IX
 	RET
 
-OBJLEFT:						; Increase score if object leaves screen on left
-	LD		HL,	SCORE
-	INC		(HL)
+OBJLEFT:
 	CALL	OBJRESET
 	RET
 
@@ -509,13 +535,14 @@ OBJRESET:						; Resets object at header IX
 ; TODO: Verify characters are being assembled correctly
 ; CHRMAP		"MZ-ASCII-EU"
 
-MSG1:		DB	"ENTER 2* 2-DIGIT HEX #S W/O SPACE", $0D
-FLOOR:		DS	40, $FF
+MSGGAMOVR:	DB	"               GAME OVER               ", $0D
+FLOOR:		DS	40, $F3
 MSGR:		DB	" RIGHT ", $0D
 MSGL:		DB	" LEFT ", $0D
 MSGRES:		DB	"RESULT:", $0D
 MSGEXIT:	DB	"EXITED PROGRAM", $0D
 MSGSCORE:	DB	"SCORE: ", $0D
+MSGSCRDEC:	DS	5	; Reserve 5 characters to store the ascii score
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
 RSEED:		DB	$A1
 BOOLRIGHT:	DB	$01
@@ -534,10 +561,10 @@ SCORE:		DB	$00
 ;
 ; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: height | 5: sym | 6: lastX | 7: lastY
 OBJECTDEFS:
-OBJ1H:		DB	38<<2,	12<<2,	-0001_0000B,	4,	2,	$C7,	38<<2,	12<<2
-OBJ2H:		DB	20<<2,	15<<2,	-0000_1000B,	4,	2,	$53,	20<<2,	15<<2
-OBJ3H:		DB	10<<2,	18<<2,	-0000_0100B,	4,	2,	$C8,	10<<2,	18<<2
-OBJ4H:		DB	10<<2,	20<<2,	-0000_0111B,	4,	2,	$E4,	10<<2,	18<<2
+OBJ1H:		DB	38<<2,	12<<2,	-0000_0100B,	4,	2,	$C7,	0,	0
+OBJ2H:		DB	20<<2,	15<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
+OBJ3H:		DB	10<<2,	18<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
+OBJ4H:		DB	10<<2,	21<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
 
 END
 
