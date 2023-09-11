@@ -25,7 +25,7 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 
 FLOORHEIGHT	EQU	21
 GRAVITY		EQU	1
-MAXSPEED	EQU	1<<3
+MAXSPEED	EQU	0000_0110B
 OBJCOUNT	EQU	4
 OBJVALS		EQU	8
 
@@ -127,12 +127,20 @@ PIXTOMEM	MACRO				; Load X/Y position from pointer arg1 and calculate memory add
 ENDM
 
 POSTOPIX	MACRO				; Convert X/Y fixed-point position into pixel position and store in HL
-	LD		A,	(%1)			; Convert & save X
+	IF '%1'=='D'				; Convert & save X
+		LD	A,	D
+	ELSE
+		LD	A,	(%1)
+	ENDIF
 	SRL		A
 	SRL		A
 	LD		L,	A
 
-	LD		A,	(%2)			; Convert & save Y
+	IF '%2'=='D'				; Convert & save Y
+		LD	A,	D
+	ELSE
+		LD	A,	(%2)
+	ENDIF
 	SRL		A
 	SRL		A
 	LD		H,	A
@@ -238,6 +246,7 @@ START:
 	CALL	DRAWOBJS
 
 	SLEEPX	$AA, $20 ;10
+	
 	CALL	CONTROLS
 	CALL	CHECKKEYDOWN
 
@@ -270,6 +279,10 @@ EXIT:
 ;	FUNCTIONS
 ;
 
+; TODO: Change collision to be from the perspective of the objects.
+; This should allow the system to know which object was hit.
+; This may need to be done during rendering,
+; or traditional collision calculations involving bounds could be used
 CHKCOLLISION:
 	POSTOMEM	PLAYERX,	PLAYERY
 	LD		A,	(HL)
@@ -301,16 +314,62 @@ DRAWOBJS:
 DRAWOBJ:
 	CALL	OBJHEADIDX			; Object header stored in IX
 
-	POSTOMEM	IX+6,	IX+7
-	LD		(HL),	$00			; Clear location
+	;POSTOMEM	IX+6,	IX+7
+	;LD		(HL),	$00			; Clear location
 
-	POSTOMEM	IX,	IX+1
-	LD		A,	(IX+5)
-	LD		(HL),	A			; Draw object
+	CALL	CLEAR2DOBJ
+	CALL	DRAW2DOBJ
+	;POSTOMEM	IX,	IX+1
+	;LD		A,	(IX+5)
+	;LD		(HL),	A			; Draw object
 	STOOBJLAST	X
 	STOOBJLAST	Y
 
 	DJNZ	DRAWOBJ
+	RET
+
+; TODO: Draw height
+CLEAR2DOBJ:
+	PUSH	BC
+	LD		B,	(IX+3)			; Load width
+	LD		D,	(IX+6)			; Load lastX
+CLR2DWID:
+	POSTOMEM	D,	IX+7
+	LD		A,	D				; Add 0000_0100B to work with fixed-point pos
+	ADD		A,	4
+	LD		D,	A
+	SRL		A
+
+	CP		(41<<1)
+	JP		NC,	CLEAR2DOBJEND
+
+	LD		(HL),	$00			; Clear location
+	DJNZ	CLR2DWID
+CLEAR2DOBJEND:
+	POP		BC
+	RET
+
+; TODO: Draw height
+DRAW2DOBJ:
+	PUSH	BC					; Save current state of BC
+	LD		B,	(IX+3)			; Load width (int)
+	LD		D,	(IX+0)			; Load xPos (fixed-point)
+DRAW2DWID:
+	POSTOMEM	D,	IX+1
+	LD		A,	D				; Add 0000_0100B to work with fixed-point pos
+	ADD		A,	4
+	LD		D,	A
+	SRL		A
+
+	CP		(41<<1)
+	JP		P,	DRAW2DOBJEND
+
+	LD		A,	(IX+5)			; Load symbol
+	LD		(HL),	A			; Draw object
+
+	DJNZ	DRAW2DWID
+DRAW2DOBJEND:
+	POP		BC					; Load saves state of BC
 	RET
 
 ;
@@ -376,7 +435,7 @@ MOVELEFT:
 JUMP:
 	TESTONFLOOR					; Check if on floor
 	RET		C					; Return if player is not on the floor
-	SETBYTE	PLAYVELY,	(-1<<3) -4
+	SETBYTE	PLAYVELY,	(-1<<3) -3
 	LD		A,	(PLAYERY)
 	DEC		A
 	LD		(PLAYERY),	A
@@ -562,16 +621,16 @@ UPDATESCRDSP:
 	LD		E,	100
 	CALL	IDIV
 	LD		A,	D
-	DRAWDIGITA	6, (FLOORHEIGHT+2)
+	DRAWDIGITA	7, (FLOORHEIGHT+2)
 
 	LD		D,	E
 	LD		E,	10
 	CALL	IDIV
 	LD		A,	D
-	DRAWDIGITA	7, (FLOORHEIGHT+2)
+	DRAWDIGITA	8, (FLOORHEIGHT+2)
 
 	LD		A,	E
-	DRAWDIGITA	8, (FLOORHEIGHT+2)
+	DRAWDIGITA	9, (FLOORHEIGHT+2)
 
 	RET
 
@@ -600,10 +659,10 @@ SCORE:		DB	$00
 ;
 ; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: height | 5: sym | 6: lastX | 7: lastY
 OBJECTDEFS:
-OBJ1H:		DB	38<<2,	12<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
+OBJ1H:		DB	39<<2,	12<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
 OBJ2H:		DB	20<<2,	15<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
 OBJ3H:		DB	10<<2,	18<<2,	-0000_0010B,	4,	2,	SPACESHIP,	0,	0
-OBJ4H:		DB	10<<2,	21<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
+OBJ4H:		DB	5<<2,	21<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
 
 END
 
