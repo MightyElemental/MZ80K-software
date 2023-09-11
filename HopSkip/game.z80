@@ -293,7 +293,7 @@ DRAWPLAYER:
 	POSTOMEM PLAYERX, PLAYERY	; Save 
 	LD		(PLAYLASTXY),	HL
 
-    LD      (HL),   PLAYERSYM	; Draw player
+	LD		(HL),	PLAYERSYM	; Draw player
 	RET
 
 DRAWOBJS:
@@ -306,7 +306,7 @@ DRAWOBJ:
 
 	POSTOMEM	IX,	IX+1
 	LD		A,	(IX+5)
-	LD      (HL),   A			; Draw object
+	LD		(HL),	A			; Draw object
 	STOOBJLAST	X
 	STOOBJLAST	Y
 
@@ -379,7 +379,7 @@ JUMP:
 	SETBYTE	PLAYVELY,	(-1<<3) -4
 	LD		A,	(PLAYERY)
 	DEC		A
-	LD		(PLAYERY), A
+	LD		(PLAYERY),	A
 	RET
 
 CLAMPVELX:						; This assumes xVel is loaded into reg A
@@ -397,13 +397,7 @@ CVXPOSMAX:
 	LD		A,	MAXSPEED
 	RET
 CVXNEGMAX:
-	LD		A, -MAXSPEED
-	RET
-
-TOGGLEDIR:
-	LD		A,	(BOOLRIGHT)
-	XOR		1
-	LD		(BOOLRIGHT),	A
+	LD		A,	-MAXSPEED
 	RET
 
 MOVE:							; Update playerx and playery values
@@ -454,11 +448,9 @@ MOVEXWALL:						; Wrap player around screen
 	CP		(39<<1)+1
 	RET		M					; Player has not gone right off screen
 MOVEXWALLRIGHT:
-	;PRINT	MSGR
 	SETBYTE	PLAYERX,	0		; Wrap player around to left side
 	RET
 MOVEXWALLLEFT:
-	;PRINT	MSGL
 	SETBYTE	PLAYERX,	39<<2	; Wrap player around to right side
 	RET
 
@@ -588,8 +580,6 @@ UPDATESCRDSP:
 
 MSGGAMOVR:	DB	"               GAME OVER               ", $0D
 FLOOR:		DS	40, $F3
-MSGR:		DB	" RIGHT ", $0D
-MSGL:		DB	" LEFT ", $0D
 MSGEXIT:	DB	"EXITED PROGRAM", $0D
 MSGSCORE:	DB	"SCORE:", $0D
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
