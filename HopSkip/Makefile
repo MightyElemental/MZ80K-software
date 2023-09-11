@@ -1,9 +1,14 @@
 CC=z80as
+CCWAV=mzf2wav
 
-all: clean game.mzt
+all: clean hopskip.wav
 
 game.mzt: game.z80
 	$(CC) $^ -m $@
 
+hopskip.wav: game.mzt
+	$(CCWAV) $^ $@
+
 clean:
-	-rm -f game.mzt
+	-rm -f *.mzt
+	-rm -f *.wav
