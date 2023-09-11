@@ -12,9 +12,11 @@ GETKY		EQU	$001B	; Get the current key pressed
 PRTWRD		EQU	$03BA	; Output a 16-bit hexadecimal number contained in HL to the screen
 PRTBYT		EQU	$03C3	; Output a hexadecimal number contained in A to the screen
 DIGASC		EQU	$03DA	
+BRKTST		EQU	$0A44	; Test if break key is pressed
 SNCV		EQU	$0DA6	; Wait for V-Blank
 DISPAC		EQU	$0BCE	; Convert a display code stored in A into its ASCII code
 ASCWRD		EQU	$0410	; Convert AF,HL ASCII into hex and store in HL
+MOVECU		EQU	$0DDC	; Control the V.D.U.
 CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=row, L=col)
 
 ;
@@ -92,10 +94,14 @@ SLEEPX		MACRO				; Sleep for 0x?? * 0x?? iterations
 	POP		DE
 ENDM
 
+DRAWDIGITA	MACRO
+	ADD		A,	32
+	LD		(VIDMEM+%1+%2*40), A
+ENDM
+
 DRAWDIGIT	MACRO
 	LD		A,	(%1)
-	ADD		A,	32
-	LD		(VIDMEM+%2+%3*40), A
+	DRAWDIGITA	%2, %3
 ENDM
 
 DRAWDIGITND	MACRO
@@ -155,7 +161,7 @@ STOOBJLAST	MACRO
 ENDM
 
 ;
-;	C = PLAYERY < FLOORHEIGHT - 0.25
+;	C = PLAYERY < FLOORHEIGHT
 ;
 TESTONFLOOR	MACRO				; C is set if not on floor (NC on floor)
 	LD		A,	(PLAYERY)
@@ -192,16 +198,27 @@ ENDM
 	ORG		$1200
 
 	CLS							; force clear screen
+	CALL	UPDATESCRDSP
 DRAWFLOOR:
 	LD		BC,	40
 	LD		HL,	FLOORHEIGHT+1:00
 	CALL	CALVAD
 	EX		DE,	HL
 	LD		HL,	FLOOR
-	LDIR
+	LDIR						; Block copy floor into VRAM
+DRAWTEXT:
+	LD		A,	$C1
+	LD		B,	(FLOORHEIGHT+2)
+DRAWTEXT1:
+	CALL	MOVECU
+	DJNZ	DRAWTEXT1
+	PRINTLN	MSGSCORE
 START:
 
 	CALL	SNCV				; Wait for V-Blank before drawing
+
+	CALL	BRKTST
+	JP		Z,	GAMEOVER
 
 	; DEBUG
 	PUSH	HL
@@ -211,11 +228,12 @@ START:
 	;CALL	PRNTSPACE
 	;LD		HL,	(PLAYVELX)
 	;CALL	PRTWRD
-	DRAWDIGIT	FLAGFLOOR,	0,	23
-	DRAWDIGIT	KEYDOWN,	2,	23
-	DRAWDIGIT	FLAGACCX,	4,	23
-	DRAWDIGIT	SCORE,		6,	23
+	DRAWDIGIT	FLAGFLOOR,	0,	(FLOORHEIGHT+3)
+	DRAWDIGIT	KEYDOWN,	2,	(FLOORHEIGHT+3)
+	DRAWDIGIT	FLAGACCX,	4,	(FLOORHEIGHT+3)
+	;DRAWDIGIT	SCORE,		6,	(FLOORHEIGHT+3)
 	POP		HL
+
 	CALL	DRAWPLAYER
 	CALL	DRAWOBJS
 
@@ -265,6 +283,7 @@ COLLISION:
 	;JP		GAMEOVER
 	LD		HL,	SCORE
 	INC		(HL)
+	CALL	UPDATESCRDSP
 	RET
 
 DRAWPLAYER:
@@ -455,6 +474,19 @@ IML:
 	DJNZ	IML
 	RET
 
+IDIV:							; Divide D by E and store the result in D with remainder in E
+	LD		A,	D
+	LD		D,	0
+IDV:
+	CP		E
+	JP		C,	IDVDONE
+	SUB		E
+	INC		D
+	JP		IDV
+IDVDONE:
+	LD		E,	A				; Store remainder
+	RET
+
 SLEEP:							; Sleep for a given number of iterations
 	LD		A,	(SLEEPCOUNT)
 SLEEP1:
@@ -532,6 +564,25 @@ OBJRESET:						; Resets object at header IX
 	LD		(IX+0),	39<<2
 	RET
 
+UPDATESCRDSP:
+	LD		A,	(SCORE)
+	LD		D,	A
+	LD		E,	100
+	CALL	IDIV
+	LD		A,	D
+	DRAWDIGITA	6, (FLOORHEIGHT+2)
+
+	LD		D,	E
+	LD		E,	10
+	CALL	IDIV
+	LD		A,	D
+	DRAWDIGITA	7, (FLOORHEIGHT+2)
+
+	LD		A,	E
+	DRAWDIGITA	8, (FLOORHEIGHT+2)
+
+	RET
+
 ; TODO: Verify characters are being assembled correctly
 ; CHRMAP		"MZ-ASCII-EU"
 
@@ -539,10 +590,8 @@ MSGGAMOVR:	DB	"               GAME OVER               ", $0D
 FLOOR:		DS	40, $F3
 MSGR:		DB	" RIGHT ", $0D
 MSGL:		DB	" LEFT ", $0D
-MSGRES:		DB	"RESULT:", $0D
 MSGEXIT:	DB	"EXITED PROGRAM", $0D
-MSGSCORE:	DB	"SCORE: ", $0D
-MSGSCRDEC:	DS	5	; Reserve 5 characters to store the ascii score
+MSGSCORE:	DB	"SCORE:", $0D
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
 RSEED:		DB	$A1
 BOOLRIGHT:	DB	$01
@@ -561,10 +610,10 @@ SCORE:		DB	$00
 ;
 ; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: height | 5: sym | 6: lastX | 7: lastY
 OBJECTDEFS:
-OBJ1H:		DB	38<<2,	12<<2,	-0000_0100B,	4,	2,	$C7,	0,	0
+OBJ1H:		DB	38<<2,	12<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
 OBJ2H:		DB	20<<2,	15<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
-OBJ3H:		DB	10<<2,	18<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
-OBJ4H:		DB	10<<2,	21<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
+OBJ3H:		DB	10<<2,	18<<2,	-0000_0010B,	4,	2,	SPACESHIP,	0,	0
+OBJ4H:		DB	10<<2,	21<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
 
 END
 
