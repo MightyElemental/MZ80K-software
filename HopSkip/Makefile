@@ -4,7 +4,7 @@ CCWAV=mzf2wav
 all: clean hopskip.wav
 
 game.mzt: game.z80
-	$(CC) $^ -m $@
+	$(CC) $^ -m HopSkip
 
 hopskip.wav: game.mzt
 	$(CCWAV) $^ $@
