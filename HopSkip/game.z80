@@ -24,10 +24,11 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 ;
 
 FLOORHEIGHT	EQU	21
-GRAVITY		EQU	1
+GRAVITY		EQU	0000_0001B
 MAXSPEED	EQU	0000_0110B
 OBJCOUNT	EQU	4
 OBJVALS		EQU	8
+JUMPSPEED	EQU	-0000_1011B		; (-1<<3) -3
 
 
 ; CHARACTERS
@@ -211,6 +212,9 @@ TITLESCREEN:
 	CLS
 	CURHOME
 	PRINTLN	TITLE
+	PRINTLN
+	PRINTLN
+	PRINTLN	MSGCONTINUE
 	CALL	WAITKEYPRESS
 	CLS							; force clear screen
 	CALL	UPDATESCRDSP
@@ -256,7 +260,7 @@ MAIN:
 	CALL	DRAWPLAYER
 	CALL	DRAWOBJS
 
-	SLEEPX	$AA, $20 ;10
+	SLEEPX	$AA, $20 ;20
 	
 	CALL	CONTROLS
 	CALL	CHECKKEYDOWN
@@ -311,8 +315,14 @@ WAIT2:							; Wait until key is pressed
 CHKCOLLISION:
 	POSTOMEM	PLAYERX,	PLAYERY
 	LD		A,	(HL)
-	CP		0
-	RET		Z
+	CP		SPACESHIP
+	JP		Z,	COLLISION
+CHKCOLBELOW:
+	LD		A,	(PLAYERX)
+	ADD		A,	4
+	LD		D,	A
+	POSTOMEM	D,	PLAYERY
+	LD		A,	(HL)
 	CP		SPACESHIP
 	JP		Z,	COLLISION
 	RET
@@ -465,7 +475,7 @@ MOVELEFT:
 JUMP:
 	TESTONFLOOR					; Check if on floor
 	RET		C					; Return if player is not on the floor
-	SETBYTE	PLAYVELY,	(-1<<3) -3
+	SETBYTE	PLAYVELY,	JUMPSPEED
 	LD		A,	(PLAYERY)
 	DEC		A
 	LD		(PLAYERY),	A
@@ -641,7 +651,7 @@ OBJLEFT:
 OBJRESET:						; Resets object at header IX
 	CALL	RAND8
 	AND		0011_1100B
-	ADD		A,	6<<2
+	ADD		A,	3<<2
 	LD		(IX+1),	A
 
 	LD		(IX+0),	39<<2
@@ -687,7 +697,6 @@ FLAGACCX:	DB	$00
 SCORE:		DB	$00
 
 TITLE: 					             
-
 DB	"       ...........................      "
 DB	"      ##.....##..#######..########.     "
 DB	"      ##.....##.##.....##.##.....##     "
@@ -704,10 +713,9 @@ DB	"    .######..#####.....##..########.    "
 DB	"    ......##.##..##....##..##.......    "
 DB	"    ##....##.##...##...##..##.......    "
 DB	"    .######..##....##.####.##.......    "
-DB	"     ..............................     "
-DB	"                                        "
-DB	"                                        "
-DB	"    PRESS ANY KEY TO BEGIN...           ", $0D
+DB	"     ..............................     ", $0D
+MSGCONTINUE:
+DB	"    PRESS ANY KEY TO CONTINUE...", $0D
 
 
 
@@ -716,9 +724,9 @@ DB	"    PRESS ANY KEY TO BEGIN...           ", $0D
 ;
 ; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: height | 5: sym | 6: lastX | 7: lastY
 OBJECTDEFS:
-OBJ1H:		DB	60<<2,	12<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
-OBJ2H:		DB	50<<2,	15<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
-OBJ3H:		DB	40<<2,	18<<2,	-0000_0010B,	4,	2,	SPACESHIP,	0,	0
-OBJ4H:		DB	45<<2,	21<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
+OBJ1H:		DB	45<<2,	6<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
+OBJ2H:		DB	50<<2,	10<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
+OBJ3H:		DB	40<<2,	13<<2,	-0000_0010B,	4,	2,	SPACESHIP,	0,	0
+OBJ4H:		DB	60<<2,	17<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
 
 END
