@@ -61,8 +61,10 @@ PRINTLN		MACRO
 ENDM
 
 CURHOME		MACRO
+	PUSH	AF
 	LD		A,	$15
 	CALL	PRNT
+	POP		AF
 ENDM
 
 CLS			MACRO
@@ -131,18 +133,18 @@ POSTOPIX	MACRO				; Convert X/Y fixed-point position into pixel position and sto
 		LD	A,	D
 	ELSE
 		LD	A,	(%1)
+		SRL	A
+		SRL	A
 	ENDIF
-	SRL		A
-	SRL		A
 	LD		L,	A
 
-	IF '%2'=='D'				; Convert & save Y
-		LD	A,	D
+	IF '%2'=='E'				; Convert & save Y
+		LD	A,	E
 	ELSE
 		LD	A,	(%2)
+		SRL	A
+		SRL	A
 	ENDIF
-	SRL		A
-	SRL		A
 	LD		H,	A
 ENDM
 
@@ -205,6 +207,11 @@ ENDM
 
 	ORG		$1200
 
+TITLESCREEN:
+	CLS
+	CURHOME
+	PRINTLN	TITLE
+	CALL	WAITKEYPRESS
 	CLS							; force clear screen
 	CALL	UPDATESCRDSP
 DRAWFLOOR:
@@ -221,12 +228,16 @@ DRAWTEXT1:
 	CALL	MOVECU
 	DJNZ	DRAWTEXT1
 	PRINTLN	MSGSCORE
-START:
 
-	CALL	SNCV				; Wait for V-Blank before drawing
+	CALL	DRAWPLAYER
+	CALL	DRAWOBJS
+	SLEEPX	$FF,	$FF
+MAIN:
 
 	CALL	BRKTST
 	JP		Z,	GAMEOVER
+
+	CALL	SNCV				; Wait for V-Blank before drawing
 
 	; DEBUG
 	PUSH	HL
@@ -254,7 +265,8 @@ CM:
 	CALL	PROCESSOBJS
 	CALL	MOVE
 	CALL	CHKCOLLISION
-	JP		START
+	JP		MAIN
+
 
 GAMEOVER:
 	CALL	DRAWPLAYER
@@ -263,21 +275,34 @@ GAMEOVER:
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
-WAIT1:							; Wait while key is down
-	CALL	GETKY
-	JP		NZ,	WAIT1
-WAIT2:							; Wait until key is pressed
-	CALL	GETKY
-	JP		Z,	WAIT2
+	CALL	WAITKEYPRESS
 EXIT:
 	CLS							; force clear screen
 	PRINTLN	MSGEXIT
 	JP		$00AD				; Exit to Monitor
 
 
+
+
+
+
 ;
 ;	FUNCTIONS
 ;
+
+
+
+
+
+
+WAITKEYPRESS:
+WAIT1:							; Wait while key is down
+	CALL	GETKY
+	JP		NZ,	WAIT1
+WAIT2:							; Wait until key is pressed
+	CALL	GETKY
+	JP		Z,	WAIT2
+	RET
 
 ; TODO: Change collision to be from the perspective of the objects.
 ; This should allow the system to know which object was hit.
@@ -333,17 +358,20 @@ CLEAR2DOBJ:
 	PUSH	BC
 	LD		B,	(IX+3)			; Load width
 	LD		D,	(IX+6)			; Load lastX
+	SRL		D
+	SRL		D
 CLR2DWID:
 	POSTOMEM	D,	IX+7
-	LD		A,	D				; Add 0000_0100B to work with fixed-point pos
-	ADD		A,	4
-	LD		D,	A
-	SRL		A
+	LD		A,	D
+	INC		D
 
-	CP		(41<<1)
+	CP		40
 	JP		NC,	CLEAR2DOBJEND
+	CP		0
+	JP		M,	C2DTSTLOOP
 
 	LD		(HL),	$00			; Clear location
+C2DTSTLOOP:
 	DJNZ	CLR2DWID
 CLEAR2DOBJEND:
 	POP		BC
@@ -354,19 +382,21 @@ DRAW2DOBJ:
 	PUSH	BC					; Save current state of BC
 	LD		B,	(IX+3)			; Load width (int)
 	LD		D,	(IX+0)			; Load xPos (fixed-point)
+	SRL		D
+	SRL		D
 DRAW2DWID:
 	POSTOMEM	D,	IX+1
-	LD		A,	D				; Add 0000_0100B to work with fixed-point pos
-	ADD		A,	4
-	LD		D,	A
-	SRL		A
+	LD		A,	D
+	INC		D
 
-	CP		(41<<1)
+	CP		40
 	JP		P,	DRAW2DOBJEND
+	CP		0
+	JP		M,	D2DTSTLOOP
 
 	LD		A,	(IX+5)			; Load symbol
 	LD		(HL),	A			; Draw object
-
+D2DTSTLOOP:
 	DJNZ	DRAW2DWID
 DRAW2DOBJEND:
 	POP		BC					; Load saves state of BC
@@ -578,9 +608,10 @@ RANDNOCLR:
 PROCESSOBJS:					; Updates all enemy objects
 	LD		B,	OBJCOUNT		; Number of objects to cycle through
 UPDATEOBJ:
+	; TODO: add component count instead of multiplying since the objs are referenced in order anyway
 	CALL	OBJHEADIDX			; Calculate memory address
 
-	LD		A,	(IX+0)
+	LD		A,	(IX+0)			; Load xPos
 	ADD		A,	(IX+2)			; Add xVel to xPos
 	LD		(IX+0),	A
 	SRL		A
@@ -604,6 +635,7 @@ OBJHEADIDX:						; Save address of object header in IX based on object index sto
 
 OBJLEFT:
 	CALL	OBJRESET
+	; TODO: Steps to take when obj leaves the screen
 	RET
 
 OBJRESET:						; Resets object at header IX
@@ -635,7 +667,7 @@ UPDATESCRDSP:
 	RET
 
 ; TODO: Verify characters are being assembled correctly
-; CHRMAP		"MZ-ASCII-EU"
+CHRMAP		"MZ-ASCII-EU"
 
 MSGGAMOVR:	DB	"               GAME OVER               ", $0D
 FLOOR:		DS	40, $F3
@@ -654,15 +686,39 @@ FLAGFLOOR:	DB	$00	; An indicator flag for debugging
 FLAGACCX:	DB	$00
 SCORE:		DB	$00
 
+TITLE: 					             
+
+DB	"       ...........................      "
+DB	"      ##.....##..#######..########.     "
+DB	"      ##.....##.##.....##.##.....##     "
+DB	"      ##.....##.##.....##.##.....##     "
+DB	"      #########.##.....##.########.     "
+DB	"      ##.....##.##.....##.##.......     "
+DB	"      ##.....##.##.....##.##.......     "
+DB	"      ##.....##..#######..##.......     "
+DB	"     ..............................     "
+DB	"    .######..##....##.####.########.    "
+DB	"    ##....##.##...##...##..##.....##    "
+DB	"    ##.......##..##....##..##.....##    "
+DB	"    .######..#####.....##..########.    "
+DB	"    ......##.##..##....##..##.......    "
+DB	"    ##....##.##...##...##..##.......    "
+DB	"    .######..##....##.####.##.......    "
+DB	"     ..............................     "
+DB	"                                        "
+DB	"                                        "
+DB	"    PRESS ANY KEY TO BEGIN...           ", $0D
+
+
+
 ;
 ; Objects to dodge
 ;
 ; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: height | 5: sym | 6: lastX | 7: lastY
 OBJECTDEFS:
-OBJ1H:		DB	39<<2,	12<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
-OBJ2H:		DB	20<<2,	15<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
-OBJ3H:		DB	10<<2,	18<<2,	-0000_0010B,	4,	2,	SPACESHIP,	0,	0
-OBJ4H:		DB	5<<2,	21<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
+OBJ1H:		DB	60<<2,	12<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
+OBJ2H:		DB	50<<2,	15<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
+OBJ3H:		DB	40<<2,	18<<2,	-0000_0010B,	4,	2,	SPACESHIP,	0,	0
+OBJ4H:		DB	45<<2,	21<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
 
 END
-
