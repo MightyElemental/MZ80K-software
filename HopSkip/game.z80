@@ -265,12 +265,12 @@ DRAWTEXT:
 	CALL	DRAWOBJS
 	SLEEPX	$FF,	$FF
 MAIN:
-	CALL	MSTP
+	CALL	MSTP				; Stop tone from playing
 
-	CALL	BRKTST
+	CALL	BRKEY				; Stop game if Shift+Break is pressed
 	JP		Z,	GAMEOVER
 
-	;CALL	DRAWDEBUG
+	;CALL	DRAWDEBUG			; Draw debug codes
 
 	CALL	SNCV				; Wait for V-Blank before drawing
 
