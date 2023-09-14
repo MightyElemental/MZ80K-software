@@ -9,6 +9,11 @@ PRNTSPACE	EQU	$000C	; Print a space character
 PRNT		EQU	$0012	; Print a character (or control)
 MESSAGE		EQU	$0015	; Print a string
 GETKY		EQU	$001B	; Get the current key pressed
+BRKEY		EQU	$001E	; If SHIFT and BREAK are pressed the zero flag is set
+MELDY		EQU	$0030	; Plays music stored at location stored in DE
+MSTA		EQU	$0044	; Play tone stored at ($11A1)
+MSTP		EQU	$0047	; Stop current tone
+TONE		EQU	$02EA	; Play tone stored in HL where f=(2MHz/HL) or HL=(2MHz/f)
 PRTWRD		EQU	$03BA	; Output a 16-bit hexadecimal number contained in HL to the screen
 PRTBYT		EQU	$03C3	; Output a hexadecimal number contained in A to the screen
 DIGASC		EQU	$03DA	
@@ -26,14 +31,18 @@ CALVAD		EQU	$0FB4	; Compute the vram address of pixel position stored in HL (H=r
 FLOORHEIGHT	EQU	21
 GRAVITY		EQU	0000_0001B
 MAXSPEED	EQU	0000_0110B
-OBJCOUNT	EQU	4
+OBJCOUNT	EQU	6
 OBJVALS		EQU	8
 JUMPSPEED	EQU	-0000_1011B		; (-1<<3) -3
 
 
 ; CHARACTERS
 SPACESHIP	EQU	$C7
-PLAYERSYM	EQU	$DF
+FACE1SYM	EQU	$CE
+FACE2SYM	EQU	$CF
+CARSYM		EQU	$C8
+PLAYERSYM	EQU	$CA
+BLOCKSYM	EQU	$43
 
 ; KEYS
 LEFTKEY		EQU	$41
@@ -59,6 +68,14 @@ PRINTLN		MACRO
 	ELSE
 		CALL CRLF2
 	ENDIF
+ENDM
+
+PRINTXY		MACRO
+	LD		A,	%1				; Set cursor X
+	LD		($1171),	A
+	LD		A,	%2				; Set cursor Y
+	LD		($1172),	A
+	PRINT	%3
 ENDM
 
 CURHOME		MACRO
@@ -194,6 +211,21 @@ CP16		MACRO				; Compare two 16-bit numbers without changing their values
 	POP		HL
 ENDM
 
+PLAYMUSIC	MACRO
+	LD		DE,	%1
+	CALL	MELDY
+ENDM
+
+PLAYTONE	MACRO
+	PUSH	HL
+	PUSH	AF
+	LD		HL,	2_000_000/%1
+	LD		($11A1),	HL
+	CALL	MSTA
+	POP		AF
+	POP		HL
+ENDM
+
 
 
 
@@ -215,6 +247,7 @@ TITLESCREEN:
 	PRINTLN
 	PRINTLN
 	PRINTLN	MSGCONTINUE
+	PLAYMUSIC	MUSTITLE
 	CALL	WAITKEYPRESS
 	CLS							; force clear screen
 	CALL	UPDATESCRDSP
@@ -226,41 +259,28 @@ DRAWFLOOR:
 	LD		HL,	FLOOR
 	LDIR						; Block copy floor into VRAM
 DRAWTEXT:
-	LD		A,	$C1
-	LD		B,	(FLOORHEIGHT+2)
-DRAWTEXT1:
-	CALL	MOVECU
-	DJNZ	DRAWTEXT1
-	PRINTLN	MSGSCORE
+	PRINTXY	0,	FLOORHEIGHT+2,	MSGSCORE
 
 	CALL	DRAWPLAYER
 	CALL	DRAWOBJS
 	SLEEPX	$FF,	$FF
 MAIN:
+	CALL	MSTP
 
 	CALL	BRKTST
 	JP		Z,	GAMEOVER
 
-	CALL	SNCV				; Wait for V-Blank before drawing
+	;CALL	DRAWDEBUG
 
-	; DEBUG
-	PUSH	HL
-	;CURHOME
-	;LD		HL,	(PLAYERX)
-	;CALL	PRTWRD
-	;CALL	PRNTSPACE
-	;LD		HL,	(PLAYVELX)
-	;CALL	PRTWRD
-	DRAWDIGIT	FLAGFLOOR,	0,	(FLOORHEIGHT+3)
-	DRAWDIGIT	KEYDOWN,	2,	(FLOORHEIGHT+3)
-	DRAWDIGIT	FLAGACCX,	4,	(FLOORHEIGHT+3)
-	;DRAWDIGIT	SCORE,		6,	(FLOORHEIGHT+3)
-	POP		HL
+	CALL	SNCV				; Wait for V-Blank before drawing
 
 	CALL	DRAWPLAYER
 	CALL	DRAWOBJS
 
-	SLEEPX	$AA, $20 ;20
+	CALL	CHKCOLLISION
+
+
+	SLEEPX	$AA, $18
 	
 	CALL	CONTROLS
 	CALL	CHECKKEYDOWN
@@ -268,14 +288,16 @@ MAIN:
 CM:
 	CALL	PROCESSOBJS
 	CALL	MOVE
-	CALL	CHKCOLLISION
 	JP		MAIN
 
 
 GAMEOVER:
+	CALL	MSTP
 	CALL	DRAWPLAYER
 	CURHOME
-	PRINTLN	MSGGAMOVR
+	PRINTXY	15,	11,	MSGGAMOVR
+	PRINTXY	13,	12,	MSGSCORE
+	PRINTXY	20,	12,	MSGSCRDEC
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
@@ -283,7 +305,8 @@ GAMEOVER:
 EXIT:
 	CLS							; force clear screen
 	PRINTLN	MSGEXIT
-	JP		$00AD				; Exit to Monitor
+	JP		$00AD				; Exit to monitor
+
 
 
 
@@ -308,6 +331,21 @@ WAIT2:							; Wait until key is pressed
 	JP		Z,	WAIT2
 	RET
 
+DRAWDEBUG:
+	PUSH	HL
+	;CURHOME
+	;LD		HL,	(PLAYERX)
+	;CALL	PRTWRD
+	;CALL	PRNTSPACE
+	;LD		HL,	(PLAYVELX)
+	;CALL	PRTWRD
+	DRAWDIGIT	FLAGFLOOR,	0,	(FLOORHEIGHT+3)
+	DRAWDIGIT	KEYDOWN,	2,	(FLOORHEIGHT+3)
+	DRAWDIGIT	FLAGACCX,	4,	(FLOORHEIGHT+3)
+	;DRAWDIGIT	SCORE,		6,	(FLOORHEIGHT+3)
+	POP		HL
+	RET
+
 ; TODO: Change collision to be from the perspective of the objects.
 ; This should allow the system to know which object was hit.
 ; This may need to be done during rendering,
@@ -315,30 +353,34 @@ WAIT2:							; Wait until key is pressed
 CHKCOLLISION:
 	POSTOMEM	PLAYERX,	PLAYERY
 	LD		A,	(HL)
-	CP		SPACESHIP
-	JP		Z,	COLLISION
-CHKCOLBELOW:
-	LD		A,	(PLAYERX)
-	ADD		A,	4
-	LD		D,	A
-	POSTOMEM	D,	PLAYERY
+	CP		0
+	RET		Z					; Do nothing if character is blank
+	CP		PLAYERSYM
+	JP		NZ,	COLLISION		; Collided if anything other than player symbol
+CHKCOLABOVE:
+	LD		A,	(PLAYERY)
+	LD		E,	A
+	SRL		E
+	SRL		E
+	DEC		E
+	POSTOMEM	PLAYERX,	E
 	LD		A,	(HL)
-	CP		SPACESHIP
-	JP		Z,	COLLISION
-	RET
+	CP		PLAYERSYM
+	JP		NZ,	COLLISION
+CHKCOLBELOW:
+	INC		E
+	INC		E
+	CP		PLAYERSYM
+	RET		Z					; Do nothing if player symbol
 COLLISION:
-	;POP		AF
-	;JP		GAMEOVER
-	LD		HL,	SCORE
-	INC		(HL)
-	CALL	UPDATESCRDSP
+	CALL	HITOBJ				; Destroy collided object
 	RET
 
 DRAWPLAYER:
 	LD		HL,	(PLAYLASTXY)	; Clear last player location
 	LD		(HL),	$00
 
-	POSTOMEM PLAYERX, PLAYERY	; Save 
+	POSTOMEM PLAYERX, PLAYERY	; Save last position
 	LD		(PLAYLASTXY),	HL
 
 	LD		(HL),	PLAYERSYM	; Draw player
@@ -412,6 +454,104 @@ DRAW2DOBJEND:
 	POP		BC					; Load saves state of BC
 	RET
 
+HITOBJ:							; Compare character stored in A with object symbols and destroy corresponding obj
+	LD		C,	A
+	LD		B,	OBJCOUNT
+	LD		IX,	OBJECTDEFS
+	LD		DE,	OBJVALS
+FINDHITOBJ:
+	LD		A,	(IX+5)
+	CP		C
+	JP		Z,	FOUNDHITOBJ
+	ADD		IX,	DE
+	DJNZ	FINDHITOBJ
+	RET
+FOUNDHITOBJ:
+	CP		BLOCKSYM
+	CALL	NZ,	OBJRESET
+	JP		NZ,	FOUNDHITOBJ1
+	SETBYTE	PLAYVELY,	0		; Stop player movement if hit block
+	SETBYTE	PLAYERY,	FLOORHEIGHT<<2
+FOUNDHITOBJ1:
+	LD		HL,	(SCORE)			; Increase score
+	LD		D,	0
+	LD		E,	(IX+4)
+
+	LD		A,	(IX+5)
+	CP		BLOCKSYM
+	JR		NZ,	ADDPOINTS
+SUBPOINTS:
+	PLAYTONE	128
+	CCF
+	SBC		HL,	DE
+	JR		C,	NEGSCORE
+	JR		UPDATESCORE
+ADDPOINTS:
+	PLAYTONE	512
+	ADD		HL,	DE
+	JR		UPDATESCORE
+	; TODO: Add check for negative
+NEGSCORE:
+	LD		HL,	0
+UPDATESCORE:
+	LD		(SCORE),	HL
+	CALL	UPDATESCRDSP
+
+	RET
+
+; Binary to ASCII decimal conversion
+; taken from BASIC 5025 interpreter
+; Converts HL to 5 decimal digits and stores in (DE)
+; DE MUST be pushed onto the stack before calling this function
+BINDEC:
+	LD		C,	0				; Counter
+	;LD		DE,	MSGSCRDEC		; Load address of score string
+	PUSH	DE					; Save pointer
+	LD		B,	0
+	LD		DE,	10_000			; Divide by powers
+	CALL	IDIVIDE
+	LD		DE,	1_000
+	CALL	IDIVIDE
+	LD		DE,	100
+	CALL	IDIVIDE
+	LD		DE,	10
+	CALL	IDIVIDE
+	LD		A,	L				; Remainder
+	POP		DE					; Result pointer
+	OR		'0'					; Turn to ascii
+	LD		(DE),	A			; Store
+	INC		DE
+	LD		A,	$0D
+	LD		(DE),	A
+	RET
+
+; Specialized division routine used by BINDEC.
+; Divides HL by DE and stores the the one digit ASCII result.
+; taken from BASIC 5025 interpreter
+IDIVIDE:
+	LD		A,	$FF				; Division count
+ID2:
+	INC		A
+	OR		A					; Clear carry
+	SBC		HL,	DE				; Subtract
+	JR		NC,	ID2				; until underflow
+	ADD		HL,	DE				; Backup if negative
+	OR		A
+	JR		NZ,	ID3
+	OR		B
+	;RET		Z				; Prevent padded zeros
+	XOR		A
+ID3:
+	INC		B
+	OR		'0'					; Convert to ASCII
+	POP		DE					; Return address
+	EX		(SP),	HL			; Pointer's on stack
+	LD		(HL),	A			; Store digit
+	INC		HL					; Bump pointer
+	EX		(SP),	HL			; Put it back
+	PUSH	DE					; Return
+	INC		C
+	RET
 ;
 ;	keydown = 0;
 ;	if (key == LEFTKEY || key == RIGHTKEY) {
@@ -658,31 +798,23 @@ OBJRESET:						; Resets object at header IX
 	RET
 
 UPDATESCRDSP:
-	LD		A,	(SCORE)
-	LD		D,	A
-	LD		E,	100
-	CALL	IDIV
-	LD		A,	D
-	DRAWDIGITA	7, (FLOORHEIGHT+2)
+	LD		DE,	MSGSCRDEC
+	LD		HL,	(SCORE)
+	PUSH	DE
+	CALL	BINDEC
+	POP		DE
 
-	LD		D,	E
-	LD		E,	10
-	CALL	IDIV
-	LD		A,	D
-	DRAWDIGITA	8, (FLOORHEIGHT+2)
-
-	LD		A,	E
-	DRAWDIGITA	9, (FLOORHEIGHT+2)
+	PRINTXY	7,	FLOORHEIGHT+2,	MSGSCRDEC
 
 	RET
 
-; TODO: Verify characters are being assembled correctly
 CHRMAP		"MZ-ASCII-EU"
 
-MSGGAMOVR:	DB	"               GAME OVER               ", $0D
+MSGGAMOVR:	DB	"GAME OVER", $0D
 FLOOR:		DS	40, $F3
 MSGEXIT:	DB	"EXITED PROGRAM", $0D
 MSGSCORE:	DB	"SCORE:", $0D
+MSGSCRDEC:	DB	"00000", $0D
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
 RSEED:		DB	$A1
 BOOLRIGHT:	DB	$01
@@ -694,9 +826,12 @@ PLAYVELY:	DB	$00
 PLAYLASTXY:	DS	2	
 FLAGFLOOR:	DB	$00	; An indicator flag for debugging
 FLAGACCX:	DB	$00
-SCORE:		DB	$00
+SCORE:		DS	2	; 16-bits for score
 
-TITLE: 					             
+MUSTITLE:	;DB	$0D	; uncomment to skip music
+DB	"GEDEGA", $0D	; music to play on the title screen
+
+TITLE: 		;DB	"HopSkip (Debug)", $0D ; uncomment to skip title
 DB	"       ...........................      "
 DB	"      ##.....##..#######..########.     "
 DB	"      ##.....##.##.....##.##.....##     "
@@ -722,11 +857,13 @@ DB	"    PRESS ANY KEY TO CONTINUE...", $0D
 ;
 ; Objects to dodge
 ;
-; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: height | 5: sym | 6: lastX | 7: lastY
+; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: points | 5: sym | 6: lastX | 7: lastY
 OBJECTDEFS:
-OBJ1H:		DB	45<<2,	6<<2,	-0000_0100B,	4,	2,	SPACESHIP,	0,	0
-OBJ2H:		DB	50<<2,	10<<2,	-0000_0011B,	4,	2,	SPACESHIP,	0,	0
-OBJ3H:		DB	40<<2,	13<<2,	-0000_0010B,	4,	2,	SPACESHIP,	0,	0
-OBJ4H:		DB	60<<2,	17<<2,	-0000_0001B,	4,	2,	SPACESHIP,	0,	0
+OBJ1H:		DB	45<<2,	6<<2,	-0000_0100B,	3,	5,	SPACESHIP,	0,	0
+OBJ2H:		DB	50<<2,	10<<2,	-0000_0011B,	3,	3,	FACE1SYM,	0,	0
+OBJ3H:		DB	40<<2,	13<<2,	-0000_0010B,	4,	2,	FACE2SYM,	0,	0
+OBJ4H:		DB	60<<2,	17<<2,	-0000_0001B,	1,	15,	CARSYM,		0,	0
+OBJBLOCK1:	DB	62<<2,	18<<2,	-0000_0010B,	6,	10,	BLOCKSYM,	0,	0
+OBJBLOCK2:	DB	55<<2,	15<<2,	-0000_0001B,	5,	10,	BLOCKSYM,	0,	0
 
 END
