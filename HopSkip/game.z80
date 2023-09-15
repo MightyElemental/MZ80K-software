@@ -846,7 +846,7 @@ FLAGFLOOR:	DB	$00	; An indicator flag for debugging
 FLAGACCX:	DB	$00
 SCORE:		DS	2	; 16-bits for score
 
-MUSTITLE:	DB	$0D	; uncomment to skip music
+MUSTITLE:	;DB	$0D	; uncomment to skip music
 DB	"GEDEGA", $0D	; music to play on the title screen
 
 TITLE: 		;DB	"HopSkip (Debug)", $0D ; uncomment to skip title
