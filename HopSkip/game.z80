@@ -40,6 +40,7 @@ JUMPSPEED	EQU	-0000_1011B		; (-1<<3) -3
 SPACESHIP	EQU	$C7
 FACE1SYM	EQU	$CE
 FACE2SYM	EQU	$CF
+SNAKESYM	EQU	$DF
 CARSYM		EQU	$C8
 PLAYERSYM	EQU	$CA
 BLOCKSYM	EQU	$43
@@ -76,6 +77,10 @@ PRINTXY		MACRO
 	LD		A,	%2				; Set cursor Y
 	LD		($1172),	A
 	PRINT	%3
+ENDM
+
+PRINTCEN	MACRO				; Print string in horizontal center of screen
+	PRINTXY	(40-%1)/2,	%2,	%3
 ENDM
 
 CURHOME		MACRO
@@ -245,11 +250,26 @@ TITLESCREEN:
 	CURHOME
 	PRINTLN	TITLE
 	PLAYMUSIC	MUSTITLE
-	PRINTLN
-	PRINTLN
-	PRINTLN	MSGCONTINUE
+	PRINTCEN	28,	24,	MSGCONTINUE
 	CALL	WAITKEYPRESS
+INSTRUCTIONSCREEN:
 	CLS							; force clear screen
+	PRINTCEN	20,	0,	INSTRUC1
+	PRINTCEN	10,	2,	INSTRUC2
+	PRINTXY	16,	4,	INSTRUC3
+	PRINTXY	16,	5,	INSTRUC4
+	PRINTXY	12,	6,	INSTRUC5
+	PRINTXY	6,	7,	INSTRUC6
+	PRINTCEN	14,	9,	INSTRUC7
+	PRINTCEN	36,	11,	INSTRUC8
+	PRINTCEN	34,	12,	INSTRUC9
+	PRINTCEN	19,	13,	INSTRUC10
+	PRINTCEN	36,	15,	INSTRUC11
+	PRINTCEN	31,	16,	INSTRUC12
+
+	PRINTCEN	28,	24,	MSGCONTINUE
+	CALL	WAITKEYPRESS
+	CLS
 	CALL	UPDATESCRDSP
 DRAWFLOOR:
 	LD		BC,	40
@@ -279,12 +299,10 @@ MAIN:
 
 	CALL	CHKCOLLISION
 
-
 	SLEEPX	$AA, $18
 	
 	CALL	CONTROLS
 	CALL	CHECKKEYDOWN
-
 CM:
 	CALL	PROCESSOBJS
 	CALL	MOVE
@@ -828,18 +846,24 @@ FLAGFLOOR:	DB	$00	; An indicator flag for debugging
 FLAGACCX:	DB	$00
 SCORE:		DS	2	; 16-bits for score
 
-MUSTITLE:	;DB	$0D	; uncomment to skip music
+MUSTITLE:	DB	$0D	; uncomment to skip music
 DB	"GEDEGA", $0D	; music to play on the title screen
 
 TITLE: 		;DB	"HopSkip (Debug)", $0D ; uncomment to skip title
-DB	"       ...........................      "
-DB	"      ##.....##..#######..########.     "
-DB	"      ##.....##.##.....##.##.....##     "
-DB	"      ##.....##.##.....##.##.....##     "
-DB	"      #########.##.....##.########.     "
-DB	"      ##.....##.##.....##.##.......     "
-DB	"      ##.....##.##.....##.##.......     "
-DB	"      ##.....##..#######..##.......     "
+
+CHRMAP		"USER-DEFINED"
+MAPCHR	'#', $C8
+; $F1(circle) $F7 $40 $70(grey block) $81(grid) $8B(nose) $90(eye) $CC(inverted circle) $FA(diamond)
+MAPCHR	'.', '.'
+
+DB	"      ............................      "
+DB	"     .##.....##..#######..########.     "
+DB	"     .##.....##.##.....##.##.....##     "
+DB	"     .##.....##.##.....##.##.....##     "
+DB	"     .#########.##.....##.########.     "
+DB	"     .##.....##.##.....##.##.......     "
+DB	"     .##.....##.##.....##.##.......     "
+DB	"     .##.....##..#######..##.......     "
 DB	"     ..............................     "
 DB	"    .######..##....##.####.########.    "
 DB	"    ##....##.##...##...##..##.....##    "
@@ -849,9 +873,26 @@ DB	"    ......##.##..##....##..##.......    "
 DB	"    ##....##.##...##...##..##.......    "
 DB	"    .######..##....##.####.##.......    "
 DB	"     ..............................     ", $0D
-MSGCONTINUE:
-DB	"    PRESS ANY KEY TO CONTINUE...", $0D
 
+CHRMAP		"MZ-ASCII-EU"
+
+MSGCONTINUE:
+DB	"PRESS ANY KEY TO CONTINUE...", $0D
+
+INSTRUC1:	DB	"HOPSKIP INSTRUCTIONS", $0D
+INSTRUC2:	DB	"-= Keys =-", $0D
+INSTRUC3:	DB	          "A - Left", $0D
+INSTRUC4:	DB	          "D - Right", $0D
+INSTRUC5:	DB	      "Space - Jump", $0D
+INSTRUC6:	DB	"Shift+Break - End Game", $0D
+INSTRUC7:	DB	"-= Gameplay =-", $0D
+INSTRUC8:	DB	"Hit the flying objects and avoid the", $0D
+INSTRUC9:	DB	"blocks! Hitting a block will cause", $0D
+INSTRUC10:	DB	"you to lose points!", $0D
+INSTRUC11:	DB	"Each object has its own point value.", $0D
+INSTRUC12:	DB	"Get as many points as possible!", $0D
+
+; $60 = alien
 
 
 ;
@@ -861,8 +902,8 @@ DB	"    PRESS ANY KEY TO CONTINUE...", $0D
 OBJECTDEFS:
 OBJ1H:		DB	45<<2,	6<<2,	-0000_0100B,	3,	5,	SPACESHIP,	0,	0
 OBJ2H:		DB	50<<2,	10<<2,	-0000_0011B,	3,	3,	FACE1SYM,	0,	0
-OBJ3H:		DB	40<<2,	13<<2,	-0000_0010B,	4,	2,	FACE2SYM,	0,	0
-OBJ4H:		DB	60<<2,	17<<2,	-0000_0001B,	1,	15,	CARSYM,		0,	0
+OBJ3H:		DB	40<<2,	13<<2,	-0000_0010B,	4,	2,	SNAKESYM,	0,	0
+OBJ4H:		DB	60<<2,	17<<2,	-0000_0010B,	1,	15,	CARSYM,		0,	0
 OBJBLOCK1:	DB	62<<2,	18<<2,	-0000_0010B,	6,	10,	BLOCKSYM,	0,	0
 OBJBLOCK2:	DB	55<<2,	15<<2,	-0000_0001B,	5,	10,	BLOCKSYM,	0,	0
 
