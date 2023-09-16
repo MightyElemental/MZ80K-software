@@ -248,6 +248,7 @@ ENDM
 	ORG		$1200
 
 TITLESCREEN:
+	CALL	RESETGAME
 	CLS
 	CURHOME
 	PRINTLN	TITLE
@@ -305,14 +306,16 @@ MAIN:
 
 	CALL	CHKCOLLISION
 
-	SLEEPX	$AA, $18
+	SLEEPX	$AA, $12
 	
 	CALL	CONTROLS
 	CALL	CHECKKEYDOWN
 CM:
 	CALL	PROCESSOBJS
 	CALL	MOVE
-	JP		MAIN
+	LD		A,	(LIVES)
+	CP		0
+	JP		NZ,	MAIN			; Repeat game loop until no more lives left
 
 
 GAMEOVER:
@@ -330,12 +333,10 @@ GAMEOVER:
 
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
+	PRINTCEN	28,	24,	MSGCONTINUE
 	CALL	WAITKEYPRESS
 EXIT:
-	CLS							; force clear screen
-	PRINTLN	MSGEXIT
-	JP		$00AD				; Exit to monitor
-
+	JP		TITLESCREEN
 
 
 
@@ -373,6 +374,17 @@ DRAWDEBUG:
 	DRAWDIGIT	FLAGACCX,	4,	(FLOORHEIGHT+3)
 	;DRAWDIGIT	SCORE,		6,	(FLOORHEIGHT+3)
 	POP		HL
+	RET
+
+RESETGAME:
+	LD		DE,	OBJECTDEFS
+	LD		HL,	OBJECTDEFSDEFAULTS
+	LD		BC,	OBJCOUNT*OBJVALS
+	LDIR
+	LD		DE,	RESETTABLEVALUES
+	LD		HL,	RESETTABLEVALUESDEFAULTS
+	LD		BC,	RESETTABLEVALUESDEFAULTS-RESETTABLEVALUES
+	LDIR
 	RET
 
 ; TODO: Change collision to be from the perspective of the objects.
@@ -700,7 +712,7 @@ MOVE1:
 	OR		A
 	JP		NZ,	MOVEX			; If a key is pressed, move
 
-	SETBYTE	FLAGACCX,	9
+	;SETBYTE	FLAGACCX,	9
 
 	LD		A,	(FLAGFLOOR)		; If not on floor, skip friction calculation
 	OR		A
@@ -762,16 +774,16 @@ SLEEP1:
 	RET
 
 STEPTOZERO:						; INC/DEC A towards zero depending on polarity
-	SETBYTEND	FLAGACCX,	0
+	;SETBYTEND	FLAGACCX,	0
 	CP		0
 	RET		Z					; Already zero
 	JP		M,	STZNEG			; Negative
 STZPOS:
-	SETBYTEND	FLAGACCX,	1
+	;SETBYTEND	FLAGACCX,	1
 	DEC		A
 	RET
 STZNEG:
-	SETBYTEND	FLAGACCX,	2
+	;SETBYTEND	FLAGACCX,	2
 	INC		A
 	RET
 
@@ -853,8 +865,6 @@ DECLIFE:
 	RET
 
 UPDATESLIVES:					; LIVES should already be loaded into A
-	CP		0
-	JP		M,	GAMEOVER		; Game ends when you have zero lives
 	CP		5
 	JP		M,	SKIPSETLIVES5
 	LD		A,	5
@@ -900,28 +910,41 @@ MSGEXIT:	DB	"EXITED PROGRAM", $0D
 MSGSCORE:	DB	"SCORE:", $0D
 MSGSCRDEC:	DB	"00000", $0D
 MSGLIVES:	DB	"LIVES:", $0D
+HISCORE:	DS	2	; 16-bits for high score
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
-RSEED:		DB	$A1
-BOOLRIGHT:	DB	$01
-KEYDOWN:	DB	$00	; If a key is being held down
-PLAYERX:	DB	$14<<2
-PLAYERY:	DB	FLOORHEIGHT<<2
-PLAYVELX:	DB	$00
-PLAYVELY:	DB	$00
-PLAYLASTXY:	DS	2	
 FLAGFLOOR:	DB	$00	; An indicator flag for debugging
 FLAGACCX:	DB	$00
-SCORE:		DS	2	; 16-bits for score
-LIVES:		DB	5	; The number of lives the player has
-HISCORE:	DS	2	; 16-bits for high score
+BOOLRIGHT:	DB	$01
+KEYDOWN:	DB	$00	; If a key is being held down
+RSEED:		DB	$A1
 
+; Resettable values
+RESETTABLEVALUES:
+PLAYERX:	DS	1
+PLAYERY:	DS	1
+PLAYVELX:	DS	1
+PLAYVELY:	DS	1
+PLAYLASTXY:	DS	2	
+SCORE:		DS	2	; 16-bits for score
+LIVES:		DS	1	; The number of lives the player has
+
+; Defaults for resettable values
+RESETTABLEVALUESDEFAULTS:
+DEFAULTPLAYERX:		DB	$14<<2
+DEFAULTPLAYERY:		DB	FLOORHEIGHT<<2
+DEFAULTPLAYVELX:	DB	$00
+DEFAULTPLAYVELY:	DB	$00
+DEFAULTPLAYLASTXY:	DS	2,	0	
+DEFAULTSCORE:		DS	2,	0	; 16-bits for score
+DEFAULTLIVES:		DB	5		; The number of lives the player has
+
+; Music
 MUSTITLE:	;DB	$0D	; uncomment to skip music
 DB	"GEDEGA", $0D	; music to play on the title screen
-
 MUSGAMOVR:	DB	"FE#DD"
 
+; Title Screen
 TITLE: 		;DB	"HopSkip (Debug)", $0D ; uncomment to skip title
-
 CHRMAP		"USER-DEFINED"
 MAPCHR	'#', $C8
 ; $F1(circle) $F7 $40 $70(grey block) $81(grid) $8B(nose) $90(eye) $CC(inverted circle) $FA(diamond)
@@ -950,6 +973,7 @@ CHRMAP		"MZ-ASCII-EU"
 MSGCONTINUE:
 DB	"PRESS ANY KEY TO CONTINUE...", $0D
 
+; Instruction page
 INSTRUC1:	DB	"HOPSKIP INSTRUCTIONS", $0D
 INSTRUC2:	DB	"-= Keys =-", $0D
 INSTRUC3:	DB	          "A - Left", $0D
@@ -970,12 +994,14 @@ INSTRUC12:	DB	"Get as many points as possible!", $0D
 ; Objects to dodge
 ;
 ; 0: xPos | 1: yPos | 2: xVel | 3: width | 4: points | 5: sym | 6: lastX | 7: lastY
-OBJECTDEFS:
-OBJ1H:		DB	45<<2,	6<<2,	-0000_0100B,	3,	5,	SPACESHIP,	0,	0
-OBJ2H:		DB	50<<2,	10<<2,	-0000_0011B,	3,	3,	FACE1SYM,	0,	0
-OBJ3H:		DB	40<<2,	13<<2,	-0000_0010B,	4,	2,	SNAKESYM,	0,	0
-OBJ4H:		DB	60<<2,	17<<2,	-0000_0010B,	1,	15,	CARSYM,		0,	0
-OBJBLOCK1:	DB	62<<2,	18<<2,	-0000_0010B,	6,	10,	BLOCKSYM,	0,	0
-OBJBLOCK2:	DB	55<<2,	15<<2,	-0000_0001B,	5,	10,	BLOCKSYM,	0,	0
+OBJECTDEFS:	DS	OBJCOUNT*OBJVALS
+
+OBJECTDEFSDEFAULTS:
+DEFAULTOBJ1H:		DB	45<<2,	6<<2,	-0000_0100B,	3,	5,	SPACESHIP,	0,	0
+DEFAULTOBJ2H:		DB	50<<2,	10<<2,	-0000_0011B,	3,	3,	FACE1SYM,	0,	0
+DEFAULTOBJ3H:		DB	40<<2,	13<<2,	-0000_0010B,	4,	2,	SNAKESYM,	0,	0
+DEFAULTOBJ4H:		DB	60<<2,	17<<2,	-0000_0010B,	1,	15,	CARSYM,		0,	0
+DEFAULTOBJBLOCK1:	DB	62<<2,	18<<2,	-0000_0010B,	6,	10,	BLOCKSYM,	0,	0
+DEFAULTOBJBLOCK2:	DB	55<<2,	15<<2,	-0000_0001B,	5,	10,	BLOCKSYM,	0,	0
 
 END
