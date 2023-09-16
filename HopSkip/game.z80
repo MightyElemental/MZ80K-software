@@ -18,6 +18,9 @@ TONE		EQU	$02EA	; Play tone stored in HL where f=(2MHz/HL) or HL=(2MHz/f)
 PRTWRD		EQU	$03BA	; Output a 16-bit hexadecimal number contained in HL to the screen
 PRTBYT		EQU	$03C3	; Output a hexadecimal number contained in A to the screen
 DIGASC		EQU	$03DA	
+GETKYD		EQU	$08CA
+DISPLY		EQU	$0970	; The display code contained in A is displayed on the screen
+READKY		EQU	$09B3	
 BRKTST		EQU	$0A44	; Test if break key is pressed
 SNCV		EQU	$0DA6	; Wait for V-Blank
 DISPAC		EQU	$0BCE	; Convert a display code stored in A into its ASCII code
@@ -73,11 +76,15 @@ PRINTLN		MACRO
 	ENDIF
 ENDM
 
-PRINTXY		MACRO
+SETCURXY	MACRO
 	LD		A,	%1				; Set cursor X
 	LD		($1171),	A
 	LD		A,	%2				; Set cursor Y
 	LD		($1172),	A
+ENDM
+
+PRINTXY		MACRO
+	SETCURXY	%1,	%2
 	PRINT	%3
 ENDM
 
@@ -251,6 +258,7 @@ TITLESCREEN:
 	CALL	RESETGAME
 	CLS
 	CURHOME
+	PRINTLN
 	PRINTLN	TITLE
 	LD		A,	5
 	CALL	XTEMP
@@ -261,10 +269,10 @@ INSTRUCTIONSCREEN:
 	CLS							; force clear screen
 	PRINTCEN	20,	0,	INSTRUC1
 	PRINTCEN	10,	2,	INSTRUC2
-	PRINTXY	16,	4,	INSTRUC3
-	PRINTXY	16,	5,	INSTRUC4
-	PRINTXY	12,	6,	INSTRUC5
-	PRINTXY	6,	7,	INSTRUC6
+	PRINTXY		16,	4,	INSTRUC3
+	PRINTXY		16,	5,	INSTRUC4
+	PRINTXY		12,	6,	INSTRUC5
+	PRINTXY		6,	7,	INSTRUC6
 	PRINTCEN	14,	9,	INSTRUC7
 	PRINTCEN	36,	11,	INSTRUC8
 	PRINTCEN	34,	12,	INSTRUC9
@@ -349,12 +357,15 @@ GONHS:							; "Game Over New High Score"
 	PLAYMUSIC	MUSNHS
 	LD		HL,	(SCORE)
 	LD		(HISCORE),	HL
+	SETCURXY	17,	13
+	LD		DE,	HSNAME
+	CALL	ENTER3CHAR
 EXIT:
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
-	LD		A,	24
+	LD		A,	15
 	CALL	CLEARLINE
-	PRINTCEN	28,	24,	MSGCONTINUE
+	PRINTCEN	28,	15,	MSGCONTINUE
 	CALL	WAITKEYPRESS
 	JP		TITLESCREEN
 
@@ -405,6 +416,22 @@ CLEARLINE1:
 	LD		(HL),	0
 	INC		HL
 	DJNZ	CLEARLINE1
+	RET
+
+ENTER3CHAR:						; Used to store 3 keyboard characters at location (DE)
+	LD		A,	$57
+	CALL	DISPLY
+	LD		B,	3
+	;LD		H,	D
+	;LD		L,	E
+ENTERCHAR:
+	CALL	READKY
+	CALL	DISPAC
+	LD		(DE),	A
+	CALL	PRNT
+	INC		DE
+	DJNZ	ENTERCHAR
+	; TODO: Add verify step
 	RET
 
 RESETGAME:
@@ -883,6 +910,7 @@ UPDATESCRDSP:
 
 	PRINTXY	8,	FLOORHEIGHT+2,	MSGSCRDEC
 	PRINTXY	8,	FLOORHEIGHT+3,	MSGHSCRDEC
+	PRINTXY	14,	FLOORHEIGHT+3,	HSNAME
 
 	RET
 
@@ -945,6 +973,7 @@ MSGSCORE:	DB	"SCORE", $0D
 MSGSCRDEC:	DB	"00000", $0D
 MSGHSCRDEC:	DB	"00000", $0D
 MSGLIVES:	DB	"LIVES", $0D
+HSNAME:		DB	"   ", $0D
 HISCORE:	DB	$00,$00			; 16-bits for high score
 SLEEPCOUNT:	DS	2				; Reserve 2 bytes of memory (zeroed)
 FLAGFLOOR:	DB	$00				; An indicator flag for debugging
