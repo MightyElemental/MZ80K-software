@@ -11,6 +11,7 @@ MESSAGE		EQU	$0015	; Print a string
 GETKY		EQU	$001B	; Get the current key pressed
 BRKEY		EQU	$001E	; If SHIFT and BREAK are pressed the zero flag is set
 MELDY		EQU	$0030	; Plays music stored at location stored in DE
+XTEMP		EQU	$0041	; Set the melody tempo 1-7 stored in A
 MSTA		EQU	$0044	; Play tone stored at ($11A1)
 MSTP		EQU	$0047	; Stop current tone
 TONE		EQU	$02EA	; Play tone stored in HL where f=(2MHz/HL) or HL=(2MHz/f)
@@ -249,6 +250,8 @@ TITLESCREEN:
 	CLS
 	CURHOME
 	PRINTLN	TITLE
+	LD		A,	5
+	CALL	XTEMP
 	PLAYMUSIC	MUSTITLE
 	PRINTCEN	28,	24,	MSGCONTINUE
 	CALL	WAITKEYPRESS
@@ -271,6 +274,7 @@ INSTRUCTIONSCREEN:
 	CALL	WAITKEYPRESS
 	CLS
 	CALL	UPDATESCRDSP
+	CALL	DRAWLIVES
 DRAWFLOOR:
 	LD		BC,	40
 	LD		HL,	FLOORHEIGHT+1:00
@@ -312,11 +316,16 @@ CM:
 GAMEOVER:
 	CALL	MSTP
 	CALL	DRAWPLAYER
+	CALL	DRAWLIVES
 	CURHOME
 	PRINTXY	15,	11,	MSGGAMOVR
 	PRINTXY	13,	12,	MSGSCORE
 	PRINTXY	20,	12,	MSGSCRDEC
-	SLEEPX	$FF,	$FF
+
+	LD		A,	7
+	CALL	XTEMP
+	PLAYMUSIC	MUSGAMOVR
+
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
 	CALL	WAITKEYPRESS
@@ -502,6 +511,9 @@ FOUNDHITOBJ1:
 	JR		NZ,	ADDPOINTS
 SUBPOINTS:
 	PLAYTONE	128
+
+	CALL	DECLIFE
+
 	CCF
 	SBC		HL,	DE
 	JR		C,	NEGSCORE
@@ -828,6 +840,57 @@ UPDATESCRDSP:
 
 	RET
 
+DECLIFE:
+	PUSH	HL
+	PUSH	DE
+	LD		A,	(LIVES)
+	DEC		A
+	CALL	UPDATESLIVES
+	POP		DE
+	POP		HL
+	RET
+
+UPDATESLIVES:					; LIVES should already be loaded into A
+	CP		0
+	JP		M,	GAMEOVER		; Game ends when you have zero lives
+	CP		5
+	JP		M,	SKIPSETLIVES5
+	LD		A,	5
+SKIPSETLIVES5:
+	LD		(LIVES),	A
+	CALL	DRAWLIVES
+	RET
+
+DRAWLIVES:
+	PRINTXY	28,	FLOORHEIGHT+2,	MSGLIVES
+	LD		A,	(LIVES)
+	LD		B,	5				; 5 lives maximum
+	LD		HL,	VIDMEM+34+(FLOORHEIGHT+2)*40
+DRAWLIFE:
+	INC		HL
+	DEC		A
+	JP		M,	DRAWLIFEBLANK
+	LD		(HL), PLAYERSYM
+	DJNZ	DRAWLIFE
+	RET
+DRAWLIFEBLANK:
+	LD		(HL), 0
+	DJNZ	DRAWLIFE
+	RET
+
+
+
+
+
+;
+;	STORED DATA
+;
+
+
+
+
+
+
 CHRMAP		"MZ-ASCII-EU"
 
 MSGGAMOVR:	DB	"GAME OVER", $0D
@@ -835,6 +898,7 @@ FLOOR:		DS	40, $F3
 MSGEXIT:	DB	"EXITED PROGRAM", $0D
 MSGSCORE:	DB	"SCORE:", $0D
 MSGSCRDEC:	DB	"00000", $0D
+MSGLIVES:	DB	"LIVES:", $0D
 SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
 RSEED:		DB	$A1
 BOOLRIGHT:	DB	$01
@@ -847,9 +911,12 @@ PLAYLASTXY:	DS	2
 FLAGFLOOR:	DB	$00	; An indicator flag for debugging
 FLAGACCX:	DB	$00
 SCORE:		DS	2	; 16-bits for score
+LIVES:		DB	5	; The number of lives the player has
 
 MUSTITLE:	;DB	$0D	; uncomment to skip music
 DB	"GEDEGA", $0D	; music to play on the title screen
+
+MUSGAMOVR:	DB	"FE#DD"
 
 TITLE: 		;DB	"HopSkip (Debug)", $0D ; uncomment to skip title
 
