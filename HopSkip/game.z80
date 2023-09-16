@@ -287,6 +287,7 @@ DRAWFLOOR1:
 	DJNZ	DRAWFLOOR1			; Draw floor into VRAM
 DRAWTEXT:
 	PRINTXY	0,	FLOORHEIGHT+2,	MSGSCORE
+	PRINTXY	0,	FLOORHEIGHT+3,	MSGHISCORE
 
 	CALL	DRAWPLAYER
 	CALL	DRAWOBJS
@@ -322,20 +323,39 @@ GAMEOVER:
 	CALL	MSTP
 	CALL	DRAWPLAYER
 	CALL	DRAWLIVES
-	CURHOME
-	PRINTXY	15,	11,	MSGGAMOVR
-	PRINTXY	13,	12,	MSGSCORE
-	PRINTXY	20,	12,	MSGSCRDEC
+	LD		A,	10
+	CALL	CLEARLINE
+	LD		A,	11
+	CALL	CLEARLINE
+
+	PRINTXY	15,	10,	MSGGAMOVR
+	PRINTXY	14,	11,	MSGSCORE
+	PRINTXY	20,	11,	MSGSCRDEC
 
 	LD		A,	7
 	CALL	XTEMP
-	PLAYMUSIC	MUSGAMOVR
 
+	LD		HL,	(SCORE)			; Test score against high score
+	LD		DE,	(HISCORE)
+	CCF
+	SBC		HL,	DE
+	JP		P,	GONHS
+	PLAYMUSIC	MUSGAMOVR
+	JP		EXIT
+GONHS:							; "Game Over New High Score"
+	LD		A,	12
+	CALL	CLEARLINE
+	PRINTCEN	11,	12,	MSGNHS
+	PLAYMUSIC	MUSNHS
+	LD		HL,	(SCORE)
+	LD		(HISCORE),	HL
+EXIT:
 	SLEEPX	$FF,	$FF
 	SLEEPX	$FF,	$FF
+	LD		A,	24
+	CALL	CLEARLINE
 	PRINTCEN	28,	24,	MSGCONTINUE
 	CALL	WAITKEYPRESS
-EXIT:
 	JP		TITLESCREEN
 
 
@@ -361,19 +381,30 @@ WAIT2:							; Wait until key is pressed
 	JP		Z,	WAIT2
 	RET
 
-DRAWDEBUG:
-	PUSH	HL
-	;CURHOME
-	;LD		HL,	(PLAYERX)
-	;CALL	PRTWRD
-	;CALL	PRNTSPACE
-	;LD		HL,	(PLAYVELX)
-	;CALL	PRTWRD
-	DRAWDIGIT	FLAGFLOOR,	0,	(FLOORHEIGHT+3)
-	DRAWDIGIT	KEYDOWN,	2,	(FLOORHEIGHT+3)
-	DRAWDIGIT	FLAGACCX,	4,	(FLOORHEIGHT+3)
-	;DRAWDIGIT	SCORE,		6,	(FLOORHEIGHT+3)
-	POP		HL
+;DRAWDEBUG:
+;	PUSH	HL
+;	CURHOME
+;	LD		HL,	(PLAYERX)
+;	CALL	PRTWRD
+;	CALL	PRNTSPACE
+;	LD		HL,	(PLAYVELX)
+;	CALL	PRTWRD
+;	DRAWDIGIT	FLAGFLOOR,	0,	(FLOORHEIGHT+3)
+;	DRAWDIGIT	KEYDOWN,	2,	(FLOORHEIGHT+3)
+;	DRAWDIGIT	FLAGACCX,	4,	(FLOORHEIGHT+3)
+;	;DRAWDIGIT	SCORE,		6,	(FLOORHEIGHT+3)
+;	POP		HL
+;	RET
+
+CLEARLINE:						; Clear the line with number stored in A
+	LD		B,	40
+	LD		H,	A
+	LD		L,	0
+	CALL	CALVAD
+CLEARLINE1:
+	LD		(HL),	0
+	INC		HL
+	DJNZ	CLEARLINE1
 	RET
 
 RESETGAME:
@@ -387,10 +418,6 @@ RESETGAME:
 	LDIR
 	RET
 
-; TODO: Change collision to be from the perspective of the objects.
-; This should allow the system to know which object was hit.
-; This may need to be done during rendering,
-; or traditional collision calculations involving bounds could be used
 CHKCOLLISION:
 	POSTOMEM	PLAYERX,	PLAYERY
 	LD		A,	(HL)
@@ -446,7 +473,6 @@ DRAWOBJ:
 	DJNZ	DRAWOBJ
 	RET
 
-; TODO: Draw height
 CLEAR2DOBJ:
 	PUSH	BC
 	LD		B,	(IX+3)			; Load width
@@ -470,7 +496,6 @@ CLEAR2DOBJEND:
 	POP		BC
 	RET
 
-; TODO: Draw height
 DRAW2DOBJ:
 	PUSH	BC					; Save current state of BC
 	LD		B,	(IX+3)			; Load width (int)
@@ -844,13 +869,20 @@ OBJRESET:						; Resets object at header IX
 	RET
 
 UPDATESCRDSP:
-	LD		DE,	MSGSCRDEC
+	LD		DE,	MSGSCRDEC		; Update score display
 	LD		HL,	(SCORE)
 	PUSH	DE
 	CALL	BINDEC
 	POP		DE
 
-	PRINTXY	7,	FLOORHEIGHT+2,	MSGSCRDEC
+	LD		DE,	MSGHSCRDEC		; Update high score display
+	LD		HL,	(HISCORE)
+	PUSH	DE
+	CALL	BINDEC
+	POP		DE
+
+	PRINTXY	8,	FLOORHEIGHT+2,	MSGSCRDEC
+	PRINTXY	8,	FLOORHEIGHT+3,	MSGHSCRDEC
 
 	RET
 
@@ -874,7 +906,7 @@ SKIPSETLIVES5:
 	RET
 
 DRAWLIVES:
-	PRINTXY	28,	FLOORHEIGHT+2,	MSGLIVES
+	PRINTXY	29,	FLOORHEIGHT+2,	MSGLIVES
 	LD		A,	(LIVES)
 	LD		B,	5				; 5 lives maximum
 	LD		HL,	VIDMEM+34+(FLOORHEIGHT+2)*40
@@ -907,15 +939,18 @@ CHRMAP		"MZ-ASCII-EU"
 
 MSGGAMOVR:	DB	"GAME OVER", $0D
 MSGEXIT:	DB	"EXITED PROGRAM", $0D
-MSGSCORE:	DB	"SCORE:", $0D
+MSGNHS:		DB	"NEW "
+MSGHISCORE:	DB	"HI"
+MSGSCORE:	DB	"SCORE", $0D
 MSGSCRDEC:	DB	"00000", $0D
-MSGLIVES:	DB	"LIVES:", $0D
-HISCORE:	DS	2	; 16-bits for high score
-SLEEPCOUNT:	DS	2	; Reserve 2 bytes of memory (zeroed)
-FLAGFLOOR:	DB	$00	; An indicator flag for debugging
+MSGHSCRDEC:	DB	"00000", $0D
+MSGLIVES:	DB	"LIVES", $0D
+HISCORE:	DB	$00,$00			; 16-bits for high score
+SLEEPCOUNT:	DS	2				; Reserve 2 bytes of memory (zeroed)
+FLAGFLOOR:	DB	$00				; An indicator flag for debugging
 FLAGACCX:	DB	$00
 BOOLRIGHT:	DB	$01
-KEYDOWN:	DB	$00	; If a key is being held down
+KEYDOWN:	DB	$00				; If a key is being held down
 RSEED:		DB	$A1
 
 ; Resettable values
@@ -924,7 +959,7 @@ PLAYERX:	DS	1
 PLAYERY:	DS	1
 PLAYVELX:	DS	1
 PLAYVELY:	DS	1
-PLAYLASTXY:	DS	2	
+PLAYLASTXY:	DS	2
 SCORE:		DS	2	; 16-bits for score
 LIVES:		DS	1	; The number of lives the player has
 
@@ -941,7 +976,8 @@ DEFAULTLIVES:		DB	5		; The number of lives the player has
 ; Music
 MUSTITLE:	;DB	$0D	; uncomment to skip music
 DB	"GEDEGA", $0D	; music to play on the title screen
-MUSGAMOVR:	DB	"FE#DD"
+MUSGAMOVR:	DB	"FE#DD", $0D
+MUSNHS:		DB	"D#DEF", $0D
 
 ; Title Screen
 TITLE: 		;DB	"HopSkip (Debug)", $0D ; uncomment to skip title
