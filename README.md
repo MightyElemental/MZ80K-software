@@ -8,6 +8,8 @@ Other information can be found at [original.sharpmz.org](https://original.sharpm
 ### Tools Used
 - For the assembler, I used: [Z80 Absolute Assembler](https://forum.sharpmz.org/viewtopic.php?p=2135#p2135)
 - For testing/emulation, I used: [ttymz80](https://github.com/yunkya2/ttymz80)
+- Another emulator can be found here: [sharpmz emulators](https://original.sharpmz.org/mfranzenemu.htm)
+  - The download link is broken as the site was moved, but the file can be found here: [V. 1.93h (Febrauary 02, 2010).](http://original.sharpmz.org/download/MZxx_internet.zip)
 - For converting to wav so it can be loaded onto the original hardware, I used: [mzf2wav](https://github.com/jfjlaros/mzf2wav)
 
 ***
