@@ -1,16 +1,16 @@
 # MZ-80K Software Collection
 
 ## Brief Overview
-The MZ-80K was introduced in 1978 to Japan and 1979 in the UK. It contains a Zylog Z80 compatible processor running at 2MHz. The original version of the screen only supports 1-bit color has a size of 40x25 characters. Video memory is shared with system memory and reads must be manually synchronized with v-blanking to avoid a "snow" effect.
+The MZ-80K was introduced in 1978 in Japan, and 1979 in the UK. It contains a Zylog Z80-compatible processor running at 2MHz. The screen is monochrome and has a resolution of 40x25 characters. Individual pixels cannot be controlled - preset characters must be used instead. Video memory is shared with system memory and read/writes must be manually synchronized with v-blanking to avoid a "snow" effect.
 
 Other information can be found at [original.sharpmz.org](https://original.sharpmz.org/).
 
 ### Tools Used
-- For the assembler, I used: [Z80 Absolute Assembler](https://forum.sharpmz.org/viewtopic.php?p=2135#p2135)
-- For testing/emulation, I used: [ttymz80](https://github.com/yunkya2/ttymz80)
-- Another emulator can be found here: [sharpmz emulators](https://original.sharpmz.org/mfranzenemu.htm)
-  - The download link is broken as the site was moved, but the file can be found here: [V. 1.93h (Febrauary 02, 2010).](http://original.sharpmz.org/download/MZxx_internet.zip)
-- For converting to wav so it can be loaded onto the original hardware, I used: [mzf2wav](https://github.com/jfjlaros/mzf2wav)
+- The assembler: [Z80 Absolute Assembler](https://forum.sharpmz.org/viewtopic.php?p=2135#p2135)
+- Emulator for rapid testing: [ttymz80](https://github.com/yunkya2/ttymz80)
+- A more accurate emulator can be found here: [sharpmz emulators](https://original.sharpmz.org/mfranzenemu.htm)
+  - The original site changed URLs, so the working download link is here: [V. 1.93h (Febrauary 02, 2010).](http://original.sharpmz.org/download/MZxx_internet.zip)
+- For converting compiled binary to encoded WAV format: [mzf2wav](https://github.com/jfjlaros/mzf2wav)
 
 ***
 
