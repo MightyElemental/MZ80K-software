@@ -17,3 +17,21 @@ Other information can be found at [original.sharpmz.org](https://original.sharpm
 ## HopSkip
 
 An arcade-style game where you must avoid solid blocks while jumping to collect objects flying across the screen. It uses fixed-point binary to control the acceleration, velocity, and position of the player for smooth movement despite the display limitations. The game has a high-score system which allows players to compete against each other and record their best performance.
+
+### Screenshots
+All screenshots were created by photographing the original hardware
+
+#### Title Screen
+![Title Screen](HopSkip/images/title.jpg)
+
+#### Instruction Screen
+![Instruction Screen](HopSkip/images/instructions.jpg)
+
+#### Game
+![Game](HopSkip/images/game.jpg)
+
+#### Gameover Screen
+![Gameover Screen](HopSkip/images/gameover.jpg)
+
+#### Gameover Screen 2
+![Gameover Screen after entering name](HopSkip/images/gameover_name.jpg)
